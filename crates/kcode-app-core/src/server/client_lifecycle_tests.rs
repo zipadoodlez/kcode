@@ -1468,7 +1468,6 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
     let client_count = Arc::new(RwLock::new(0usize));
     let client_connections = Arc::new(RwLock::new(HashMap::new()));
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::new()));
     let file_touch = FileTouchService::new();
     let client_debug_state = Arc::new(RwLock::new(ClientDebugState::default()));
     let (_debug_response_tx, _) = broadcast::channel(8);
@@ -1491,7 +1490,6 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
         client_count,
         Arc::clone(&client_connections),
         swarm_members,
-        swarm_runs,
         file_touch,
         client_debug_state,
         _debug_response_tx,

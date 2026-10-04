@@ -120,7 +120,6 @@ impl Fixture {
             &mut task,
             tokio::spawn(std::future::pending()),
             &self.members,
-            &Arc::new(RwLock::new(HashMap::new())),
             &FileTouchService::new(),
             &Arc::new(RwLock::new(ClientDebugState::default())),
             "debug-original",

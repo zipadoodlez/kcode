@@ -73,7 +73,6 @@ async fn handle_resume_session_allows_reconnect_takeover_with_local_history() ->
     let client_debug_state = Arc::new(RwLock::new(ClientDebugState::default()));
     let swarm_members = Arc::new(RwLock::new(HashMap::<String, SwarmMember>::new()));
     let file_touch = FileTouchService::new();
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let client_count = Arc::new(RwLock::new(2usize));
     let (writer, _peer_stream) = test_writer()?;
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
@@ -105,7 +104,6 @@ async fn handle_resume_session_allows_reconnect_takeover_with_local_history() ->
         &client_debug_state,
         &swarm_members,
         &file_touch,
-        &swarm_runs,
         &client_count,
         &writer,
         "test-server",

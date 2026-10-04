@@ -17,7 +17,7 @@ use super::debug_swarm_read::maybe_handle_swarm_read_command;
 use super::debug_swarm_write::{DebugSwarmWriteContext, maybe_handle_swarm_write_command};
 use super::debug_testers::execute_tester_command;
 use super::{
-    FileTouchService, RunState, ServerIdentity, SwarmEvent, SwarmMember, debug_control_allowed,
+    FileTouchService, ServerIdentity, SwarmEvent, SwarmMember, debug_control_allowed,
     fanout_session_event,
 };
 use crate::agent::Agent;
@@ -239,7 +239,6 @@ pub(super) async fn handle_debug_client(
     provider: Arc<dyn Provider>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: FileTouchService,
     client_debug_state: Arc<RwLock<ClientDebugState>>,
     client_debug_response_tx: broadcast::Sender<(u64, String)>,
@@ -416,7 +415,6 @@ pub(super) async fn handle_debug_client(
                             &session_id,
                             &provider,
                             &swarm_members,
-                            &swarm_runs,
                             &event_history,
                             &event_counter,
                             &swarm_event_tx,
@@ -434,7 +432,6 @@ pub(super) async fn handle_debug_client(
                             &client_debug_state,
                             &server_identity,
                             server_start_time,
-                            &swarm_runs,
                             &file_touch,
                             &debug_jobs,
                             &event_history,
@@ -448,7 +445,6 @@ pub(super) async fn handle_debug_client(
                             cmd,
                             &sessions,
                             &swarm_members,
-                            &swarm_runs,
                             &file_touch,
                             &server_identity,
                         )
@@ -460,7 +456,6 @@ pub(super) async fn handle_debug_client(
                             &DebugSwarmWriteContext {
                                 session_id: &session_id,
                                 swarm_members: &swarm_members,
-                                swarm_runs: &swarm_runs,
                             },
                         )
                         .await?

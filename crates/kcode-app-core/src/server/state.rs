@@ -123,23 +123,6 @@ pub struct SwarmState {
     pub runs: Arc<RwLock<HashMap<String, RunState>>>,
 }
 
-/// First-class snapshot of a single swarm's logical runtime state.
-#[derive(Clone, Debug)]
-pub struct SwarmRuntime {
-    pub swarm_id: String,
-    pub member_session_ids: HashSet<String>,
-    pub members: Vec<SwarmMember>,
-    pub run: RunState,
-}
-
-impl SwarmRuntime {
-    /// Whether anything about this swarm is durable. A run's own state is in memory
-    /// only, so it says nothing about the files.
-    pub fn has_any_state(&self) -> bool {
-        !self.members.is_empty()
-    }
-}
-
 /// Live transport attachment for a connected session.
 #[derive(Clone, Debug)]
 pub struct LiveSessionAttachment {
@@ -152,37 +135,6 @@ impl SwarmState {
         Self {
             members: Arc::new(RwLock::new(members)),
             runs: Arc::new(RwLock::new(runs)),
-        }
-    }
-
-    pub async fn load_runtime(&self, swarm_id: &str) -> SwarmRuntime {
-        let run = {
-            let runs = self.runs.read().await;
-            runs.get(swarm_id).cloned().unwrap_or_default()
-        };
-        let members = {
-            let members = self.members.read().await;
-            let mut members = members
-                .values()
-                .filter(|member| {
-                    super::swarm::swarm_root(&members, &member.session_id).as_deref()
-                        == Some(swarm_id)
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-            members.sort_by(|left, right| left.session_id.cmp(&right.session_id));
-            members
-        };
-        let member_session_ids = members
-            .iter()
-            .map(|member| member.session_id.clone())
-            .collect();
-
-        SwarmRuntime {
-            swarm_id: swarm_id.to_string(),
-            member_session_ids,
-            members,
-            run,
         }
     }
 }

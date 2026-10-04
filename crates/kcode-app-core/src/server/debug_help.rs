@@ -172,7 +172,6 @@ COORDINATORS & ROLES:
 PLANS (server-scoped plan items):
   swarm:plans              - List all swarm plans with item counts
   swarm:plan:<swarm_id>    - Get plan items for specific swarm
-  swarm:clear_plan:<id>    - Admin: delete a swarm's plan (memory + persisted state)
 
 FILE TOUCHES (conflict detection):
   swarm:touches            - List all file touches (path, session, op, age, timestamp)

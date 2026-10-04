@@ -1,4 +1,4 @@
-use super::{RunState, SwarmMember, SwarmState, persist_swarm_state_for};
+use super::SwarmMember;
 use crate::protocol::{NotificationType, ServerEvent};
 use anyhow::Result;
 use std::collections::HashMap;
@@ -8,66 +8,12 @@ use tokio::sync::RwLock;
 pub(super) struct DebugSwarmWriteContext<'a> {
     pub(super) session_id: &'a Arc<RwLock<String>>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
 }
 
 pub(super) async fn maybe_handle_swarm_write_command(
     cmd: &str,
     ctx: &DebugSwarmWriteContext<'_>,
 ) -> Result<Option<String>> {
-    if cmd.starts_with("swarm:clear_plan:") {
-        let swarm_id = cmd.strip_prefix("swarm:clear_plan:").unwrap_or("").trim();
-        if swarm_id.is_empty() {
-            return Err(anyhow::anyhow!(
-                "swarm:clear_plan requires a swarm_id: swarm:clear_plan:<swarm_id>"
-            ));
-        }
-        let removed = {
-            let mut plans = ctx.swarm_runs.write().await;
-            plans.remove(swarm_id)
-        };
-        let Some(removed) = removed else {
-            return Err(anyhow::anyhow!(
-                "No run state found for swarm '{}'",
-                swarm_id
-            ));
-        };
-        // The plan is in memory only, so clearing it clears it; the members are
-        // what the state file holds.
-        let swarm_state = SwarmState {
-            members: Arc::clone(ctx.swarm_members),
-            runs: Arc::clone(ctx.swarm_runs),
-        };
-        persist_swarm_state_for(swarm_id, &swarm_state).await;
-        // Push the cleared state to attached clients. Without this, every
-        // connected TUI keeps rendering (and holding resident) the old item
-        // graph until its next reconnect; a 1.5k-item stale plan is ~650 KB
-        // of JSON pinned per client.
-        let clear_event = ServerEvent::SwarmPlan {
-            swarm_id: swarm_id.to_string(),
-            items: Vec::new(),
-        };
-        let session_ids = super::swarm::swarm_session_ids(swarm_id, ctx.swarm_members).await;
-        {
-            let members = ctx.swarm_members.read().await;
-            for sid in session_ids {
-                if let Some(member) = members.get(&sid) {
-                    let _ = member.event_tx.send(clear_event.clone());
-                    for tx in member.event_txs.values() {
-                        let _ = tx.send(clear_event.clone());
-                    }
-                }
-            }
-        }
-        return Ok(Some(
-            serde_json::json!({
-                "swarm_id": swarm_id,
-                "cleared_row_state_count": removed.len(),
-            })
-            .to_string(),
-        ));
-    }
-
     if cmd.starts_with("swarm:broadcast:") {
         let rest = cmd.strip_prefix("swarm:broadcast:").unwrap_or("").trim();
         let (target_swarm_id, message) = if let Some(space_idx) = rest.find(' ') {

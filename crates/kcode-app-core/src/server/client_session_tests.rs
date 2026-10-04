@@ -13,8 +13,8 @@ use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::{EventStream, Provider};
 use crate::server::{
-    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionInterruptQueues,
-    SwarmEvent, SwarmMember,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionInterruptQueues, SwarmEvent,
+    SwarmMember,
 };
 use crate::tool::Registry;
 use anyhow::Result;

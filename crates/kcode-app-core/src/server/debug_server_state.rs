@@ -1,6 +1,6 @@
 use super::{
-    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService, RunState,
-    ServerIdentity, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
+    ClientConnectionInfo, ClientDebugState, DebugJob, FileAccess, FileTouchService, ServerIdentity,
+    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
 };
 use crate::agent::Agent;
 use anyhow::Result;
@@ -93,7 +93,6 @@ pub(super) async fn maybe_handle_server_state_command(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     server_identity: &ServerIdentity,
     server_start_time: Instant,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
     debug_jobs: &Arc<RwLock<HashMap<String, DebugJob>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
@@ -190,7 +189,6 @@ pub(super) async fn maybe_handle_server_state_command(
             client_debug_state,
             server_identity,
             server_start_time,
-            swarm_runs,
             file_touch,
             debug_jobs,
             event_history,
@@ -700,7 +698,6 @@ async fn build_server_memory_payload(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     server_identity: &ServerIdentity,
     server_start_time: Instant,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
     debug_jobs: &Arc<RwLock<HashMap<String, DebugJob>>>,
     event_history: &Arc<RwLock<VecDeque<SwarmEvent>>>,
@@ -867,11 +864,6 @@ async fn build_server_memory_payload(
     let swarm_count = swarm_ids.len();
     drop(members);
 
-    let runs = swarm_runs.read().await;
-    let swarm_run_count = runs.len();
-    let swarm_run_entry_count: usize = runs.values().map(|run| run.len()).sum();
-    drop(runs);
-
     let touches = file_touch.snapshot().await;
     let file_touch_path_count = touches.len();
     let file_touch_entry_count: usize = touches.values().map(|entries| entries.len()).sum();
@@ -975,8 +967,6 @@ async fn build_server_memory_payload(
             "swarm_count": swarm_count,
             "swarm_membership_count": swarm_membership_count,
             "swarms_estimate_bytes": swarms_estimate_bytes,
-            "run_count": swarm_run_count,
-            "run_entry_count": swarm_run_entry_count,
         },
         "file_tracking": {
             "paths_with_touches": file_touch_path_count,

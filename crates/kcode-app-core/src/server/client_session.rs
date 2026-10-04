@@ -3,12 +3,12 @@
 use super::client_state::{handle_get_history, spawn_model_prefetch_update};
 use super::swarm::{record_swarm_event_for_session, swarm_root};
 use super::{
-    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionAgents,
-    SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmState, fanout_live_client_event,
-    persist_swarm_state_for, register_background_tool_signal, register_session_event_sender,
-    register_session_interrupt_queue, remove_background_tool_signal, remove_session_from_swarm,
-    remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
-    send_todos_to_session, unregister_session_event_sender, update_member_status,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents, SessionInterruptQueues,
+    SwarmEvent, SwarmMember, fanout_live_client_event, persist_swarm_state_for,
+    register_background_tool_signal, register_session_event_sender, register_session_interrupt_queue,
+    remove_background_tool_signal, remove_session_from_swarm, remove_session_interrupt_queue,
+    rename_background_tool_signal, rename_session_interrupt_queue, send_todos_to_session,
+    unregister_session_event_sender, update_member_status,
 };
 use crate::agent::Agent;
 use crate::message::ContentBlock;
@@ -844,7 +844,6 @@ async fn cleanup_detached_source_session_if_unused(
     client_connections: &Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     file_touch: &FileTouchService,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) {
     unregister_session_event_sender(swarm_members, old_session_id, client_connection_id).await;
 
@@ -881,7 +880,7 @@ async fn cleanup_detached_source_session_if_unused(
         swarm_root(&members, old_session_id)
     };
     if let Some(swarm_id) = removed_swarm_id {
-        remove_session_from_swarm(old_session_id, &swarm_id, swarm_members, swarm_runs).await;
+        remove_session_from_swarm(old_session_id, &swarm_id, swarm_members).await;
     }
     {
         let mut members = swarm_members.write().await;
@@ -967,7 +966,6 @@ pub(super) async fn handle_resume_session(
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     file_touch: &FileTouchService,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     client_count: &Arc<RwLock<usize>>,
     writer: &Arc<Mutex<WriteHalf>>,
     server_name: &str,
@@ -1054,7 +1052,6 @@ pub(super) async fn handle_resume_session(
             client_connections,
             swarm_members,
             file_touch,
-            swarm_runs,
         )
         .await;
 
@@ -1414,11 +1411,7 @@ pub(super) async fn handle_resume_session(
                 let members = swarm_members.read().await;
                 swarm_root(&members, &session_id)
             } {
-                let swarm_state = SwarmState {
-                    members: Arc::clone(swarm_members),
-                    runs: Arc::clone(swarm_runs),
-                };
-                persist_swarm_state_for(&swarm_id, &swarm_state).await;
+                persist_swarm_state_for(&swarm_id, swarm_members).await;
             }
 
             register_session_event_sender(

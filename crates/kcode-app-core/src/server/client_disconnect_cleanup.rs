@@ -1,8 +1,8 @@
 use super::{
-    ClientConnectionInfo, ClientDebugState, FileTouchService, RunState, SessionAgents,
-    SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event,
-    remove_background_tool_signal, remove_session_from_swarm, remove_session_interrupt_queue,
-    unregister_session_event_sender, update_member_status,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents, SessionInterruptQueues,
+    SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event, remove_background_tool_signal,
+    remove_session_from_swarm, remove_session_interrupt_queue, unregister_session_event_sender,
+    update_member_status,
 };
 use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;
@@ -87,7 +87,6 @@ pub(super) async fn cleanup_client_connection(
     processing_task: &mut Option<tokio::task::JoinHandle<()>>,
     event_handle: tokio::task::JoinHandle<()>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     file_touch: &FileTouchService,
     client_debug_state: &Arc<RwLock<ClientDebugState>>,
     client_debug_id: &str,
@@ -291,7 +290,7 @@ pub(super) async fn cleanup_client_connection(
         crate::session_metrics::forget(client_session_id);
 
         if let Some(ref swarm_id) = swarm_id {
-            remove_session_from_swarm(client_session_id, swarm_id, swarm_members, swarm_runs).await;
+            remove_session_from_swarm(client_session_id, swarm_id, swarm_members).await;
             record_swarm_event(
                 event_history,
                 event_counter,

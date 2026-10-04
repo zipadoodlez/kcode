@@ -11,7 +11,7 @@ use crate::message::{Message, ToolDefinition};
 use crate::protocol::ServerEvent;
 use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::{EventStream, Provider};
-use crate::server::{RunState, SwarmEventType, SwarmMember};
+use crate::server::{SwarmEventType, SwarmMember};
 use crate::tool::Registry;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -841,7 +841,6 @@ async fn only_the_root_session_may_spawn() {
 #[tokio::test]
 async fn spawn_resolves_the_requesting_session_as_run_root() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let (req_member, _req_rx) = member("req");
     swarm_members
         .write()
@@ -850,7 +849,7 @@ async fn spawn_resolves_the_requesting_session_as_run_root() {
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     let run_id =
-        ensure_spawn_coordinator_swarm(1, "req", &client_event_tx, &swarm_members, &swarm_runs, 32)
+        ensure_spawn_coordinator_swarm(1, "req", &client_event_tx, &swarm_members, 32)
             .await;
 
     // A session that reports back to nobody roots its own run; there is no
@@ -865,7 +864,6 @@ async fn spawn_resolves_the_requesting_session_as_run_root() {
 #[tokio::test]
 async fn terminal_members_do_not_consume_spawn_capacity() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
         let (root, _rx) = member("root");
@@ -890,7 +888,6 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
         "root",
         &client_event_tx,
         &swarm_members,
-        &swarm_runs,
         32,
     )
     .await;
@@ -901,7 +898,6 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
 #[tokio::test]
 async fn spawn_rejected_at_configured_live_agent_limit() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     {
         let mut members = swarm_members.write().await;
         let (root, _rx) = member("root");
@@ -916,7 +912,7 @@ async fn spawn_rejected_at_configured_live_agent_limit() {
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     let refused =
-        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, &swarm_runs, 2)
+        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, 2)
             .await;
 
     assert!(refused.is_none());

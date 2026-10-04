@@ -155,13 +155,7 @@ async fn prune_expired_terminal_swarm_members(
             continue;
         };
 
-        remove_session_from_swarm(
-            &session_id,
-            &swarm_id,
-            &swarm_state.members,
-            &swarm_state.runs,
-        )
-        .await;
+        remove_session_from_swarm(&session_id, &swarm_id, &swarm_state.members).await;
         pruned += 1;
     }
 
@@ -243,13 +237,7 @@ async fn reap_idle_spawned_workers(
             root
         };
         if let Some(ref swarm_id) = removed_swarm_id {
-            remove_session_from_swarm(
-                &session_id,
-                swarm_id,
-                &swarm_state.members,
-                &swarm_state.runs,
-            )
-            .await;
+            remove_session_from_swarm(&session_id, swarm_id, &swarm_state.members).await;
         }
         crate::logging::info(&format!(
             "Reaped idle spawned swarm worker {session_id} (idle > {}s)",
@@ -260,13 +248,18 @@ async fn reap_idle_spawned_workers(
     reaped
 }
 
-pub(super) async fn persist_swarm_state_for(swarm_id: &str, swarm_state: &SwarmState) {
-    // Never call this while holding any SwarmState map guard. The operation
-    // lock deliberately spans the independent map reads and atomic file write.
+/// Persist one swarm's members. Only the member registry is durable: the rows
+/// are the list's, and a run keeps no stored state.
+pub(super) async fn persist_swarm_state_for(
+    swarm_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+) {
+    // Never call this while holding the swarm_members guard. The operation
+    // lock deliberately spans the map read and the atomic file write.
     let operation_lock = swarm_operation_lock(swarm_id);
     let _operation_guard = operation_lock.lock().await;
-    let runtime = swarm_state.load_runtime(swarm_id).await;
-    persist_swarm_state_snapshot(swarm_id, &runtime.members);
+    let members = swarm::swarm_members_of(swarm_id, swarm_members).await;
+    persist_swarm_state_snapshot(swarm_id, &members);
 }
 
 fn headless_member_should_restore(status: &SwarmLifecycleStatus, is_headless: bool) -> bool {
@@ -808,7 +801,7 @@ impl Server {
                         let members = self.swarm_state.members.read().await;
                         swarm::swarm_root(&members, &session_id)
                     } {
-                        persist_swarm_state_for(&swarm_id, &self.swarm_state).await;
+                        persist_swarm_state_for(&swarm_id, &self.swarm_state.members).await;
                     }
                     continue;
                 }
@@ -941,7 +934,6 @@ impl Server {
             let recover_event_history = Arc::clone(&self.event_history);
             let recover_event_counter = Arc::clone(&self.event_counter);
             let recover_swarm_event_tx = self.swarm_event_tx.clone();
-            let recover_swarm_state = self.swarm_state.clone();
             let recovery_reload_id = stored_recovery_record.map(|record| record.reload_id);
 
             tokio::spawn(async move {
@@ -969,7 +961,7 @@ impl Server {
                     let members = recover_swarm_members.read().await;
                     swarm::swarm_root(&members, &session_id)
                 } {
-                    persist_swarm_state_for(&swarm_id, &recover_swarm_state).await;
+                    persist_swarm_state_for(&swarm_id, &recover_swarm_members).await;
                 }
 
                 match reload_recovery::mark_delivered_if_matching_continuation(
@@ -1057,13 +1049,13 @@ impl Server {
                     let members = recover_swarm_members.read().await;
                     swarm::swarm_root(&members, &session_id)
                 } {
-                    persist_swarm_state_for(&swarm_id, &recover_swarm_state).await;
+                    persist_swarm_state_for(&swarm_id, &recover_swarm_members).await;
                 }
             });
         }
 
         for swarm_id in swarms_to_persist {
-            persist_swarm_state_for(&swarm_id, &self.swarm_state).await;
+            persist_swarm_state_for(&swarm_id, &self.swarm_state.members).await;
         }
 
         crate::logging::info(&format!(
@@ -1170,7 +1162,6 @@ impl Server {
         // Spawn the bus monitor for swarm coordination
         let monitor_file_touch = self.file_touch.clone();
         let monitor_swarm_members = Arc::clone(&self.swarm_state.members);
-        let monitor_swarm_runs = Arc::clone(&self.swarm_state.runs);
         let monitor_sessions = Arc::clone(&self.sessions);
         let monitor_soft_interrupt_queues = Arc::clone(&self.soft_interrupt_queues);
         let monitor_event_history = Arc::clone(&self.event_history);
@@ -1180,7 +1171,6 @@ impl Server {
             Self::monitor_bus(
                 monitor_file_touch,
                 monitor_swarm_members,
-                monitor_swarm_runs,
                 monitor_sessions,
                 monitor_soft_interrupt_queues,
                 monitor_event_history,
@@ -1191,14 +1181,13 @@ impl Server {
         });
 
         let stale_swarm_members = Arc::clone(&self.swarm_state.members);
-        let stale_swarm_runs = Arc::clone(&self.swarm_state.runs);
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(crate::server::swarm::swarm_task_sweep_interval());
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                salvage_dead_assignees(&stale_swarm_members, &stale_swarm_runs).await;
+                salvage_dead_assignees(&stale_swarm_members).await;
             }
         });
 
@@ -1709,7 +1698,6 @@ impl Server {
         sessions: &SessionAgents,
         soft_interrupt_queues: &SessionInterruptQueues,
         swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-        swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
         event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
         event_counter: &Arc<std::sync::atomic::AtomicU64>,
         swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -1745,7 +1733,6 @@ impl Server {
                     sessions,
                     soft_interrupt_queues,
                     swarm_members,
-                    swarm_runs,
                     event_history,
                     event_counter,
                     swarm_event_tx,
@@ -1760,14 +1747,9 @@ impl Server {
     }
 
     /// Monitor the global Bus for FileTouch events and detect conflicts
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "bus monitor needs file state, swarm state, sessions, queues, and event history sinks"
-    )]
     async fn monitor_bus(
         file_touch: FileTouchService,
         swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-        swarm_runs: Arc<RwLock<HashMap<String, RunState>>>,
         sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
         soft_interrupt_queues: SessionInterruptQueues,
         event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
@@ -2054,7 +2036,6 @@ impl Server {
                         &sessions,
                         &soft_interrupt_queues,
                         &swarm_members,
-                        &swarm_runs,
                         &event_history,
                         &event_counter,
                         &swarm_event_tx,

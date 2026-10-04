@@ -65,7 +65,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         },
     )])));
     let file_touch = FileTouchService::new();
-    let swarm_runs = Arc::new(RwLock::new(HashMap::<String, RunState>::new()));
     let client_count = Arc::new(RwLock::new(1usize));
     let (writer, _peer_stream) = test_writer()?;
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
@@ -89,7 +88,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
         let client_debug_state = Arc::clone(&client_debug_state);
         let swarm_members = Arc::clone(&swarm_members);
         let file_touch = file_touch.clone();
-        let swarm_runs = Arc::clone(&swarm_runs);
         let client_count = Arc::clone(&client_count);
         let writer = Arc::clone(&writer);
         let client_event_tx = client_event_tx.clone();
@@ -118,7 +116,6 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
                 &client_debug_state,
                 &swarm_members,
                 &file_touch,
-                &swarm_runs,
                 &client_count,
                 &writer,
                 "test-server",

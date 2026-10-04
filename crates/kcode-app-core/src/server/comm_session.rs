@@ -6,11 +6,11 @@ use super::swarm_mutation_state::{
     request_key,
 };
 use super::{
-    RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmState, broadcast_swarm_status, broadcast_todos, create_headless_session,
-    fanout_session_event, persist_swarm_state_for, record_swarm_event,
-    record_swarm_event_for_session, remove_background_tool_signal, remove_session_from_swarm,
-    remove_session_interrupt_queue, set_member_task_label, truncate_detail, update_member_status,
+    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
+    broadcast_swarm_status, broadcast_todos, create_headless_session, fanout_session_event,
+    persist_swarm_state_for, record_swarm_event, record_swarm_event_for_session,
+    remove_background_tool_signal, remove_session_from_swarm, remove_session_interrupt_queue,
+    set_member_task_label, truncate_detail, update_member_status,
 };
 use crate::config::SwarmSpawnMode;
 use crate::protocol::ServerEvent;
@@ -564,7 +564,6 @@ pub(super) async fn spawn_swarm_agent(
     global_session_id: &Arc<RwLock<String>>,
     provider_template: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -659,7 +658,6 @@ pub(super) async fn spawn_swarm_agent(
                 provider_template,
                 &cmd,
                 swarm_members,
-                swarm_runs,
                 soft_interrupt_queues,
                 coordinator_is_canary,
                 spawn_model.clone(),
@@ -708,11 +706,7 @@ pub(super) async fn spawn_swarm_agent(
     if let Some(label_text) = label.as_deref().or(initial_message.as_deref()) {
         set_member_task_label(&new_session_id, label_text, swarm_members).await;
     }
-    let swarm_state = SwarmState {
-        members: Arc::clone(swarm_members),
-        runs: Arc::clone(swarm_runs),
-    };
-    persist_swarm_state_for(swarm_id, &swarm_state).await;
+    persist_swarm_state_for(swarm_id, swarm_members).await;
 
     if let Some(initial_msg) = startup_message
         && is_headless_fallback
@@ -801,7 +795,6 @@ pub(super) async fn handle_comm_spawn(
     global_session_id: &Arc<RwLock<String>>,
     provider_template: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -825,7 +818,6 @@ pub(super) async fn handle_comm_spawn(
         &req_session_id,
         client_event_tx,
         swarm_members,
-        swarm_runs,
         crate::config::config().agents.swarm_max_concurrent_agents,
     )
     .await
@@ -874,7 +866,6 @@ pub(super) async fn handle_comm_spawn(
         global_session_id,
         provider_template,
         swarm_members,
-        swarm_runs,
         event_history,
         event_counter,
         swarm_event_tx,
@@ -942,7 +933,6 @@ pub(super) async fn end_session(
     sessions: &SessionAgents,
     soft_interrupt_queues: &SessionInterruptQueues,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -974,7 +964,7 @@ pub(super) async fn end_session(
     // member removed first leaves a run's last session with nothing to resolve its
     // list from, and its rows stay held by a session that no longer exists.
     if let Some(ref swarm_id) = removed_swarm_id {
-        remove_session_from_swarm(session_id, swarm_id, swarm_members, swarm_runs).await;
+        remove_session_from_swarm(session_id, swarm_id, swarm_members).await;
     }
     let removed_name = {
         let mut members = swarm_members.write().await;
@@ -1010,7 +1000,6 @@ pub(super) async fn handle_comm_stop(
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     sessions: &SessionAgents,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -1095,7 +1084,6 @@ pub(super) async fn handle_comm_stop(
             sessions,
             soft_interrupt_queues,
             swarm_members,
-            swarm_runs,
             event_history,
             event_counter,
             swarm_event_tx,
@@ -1196,7 +1184,6 @@ async fn ensure_spawn_coordinator_swarm(
     req_session_id: &str,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    _swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     configured_live_agent_limit: usize,
 ) -> Option<String> {
     let (swarm_id, live_spawned_agent_count) = {

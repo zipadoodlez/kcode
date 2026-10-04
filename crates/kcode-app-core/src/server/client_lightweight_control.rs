@@ -3,7 +3,7 @@ use super::client_comm::handle_comm_message;
 use super::client_writer::write_direct_event;
 use super::comm_session::{handle_comm_list_models, handle_comm_spawn, handle_comm_stop};
 use super::{
-    ClientConnectionInfo, RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
+    ClientConnectionInfo, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmMember,
     SwarmMutationRuntime,
 };
 use crate::config::SwarmSpawnMode;
@@ -42,7 +42,6 @@ pub(super) struct LightweightControlContext<'a> {
     pub(super) global_session_id: &'a Arc<RwLock<String>>,
     pub(super) provider_template: &'a Arc<dyn Provider>,
     pub(super) swarm_members: &'a Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub(super) swarm_runs: &'a Arc<RwLock<HashMap<String, RunState>>>,
     pub(super) client_connections: &'a Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
     pub(super) event_history: &'a Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     pub(super) event_counter: &'a Arc<std::sync::atomic::AtomicU64>,
@@ -62,7 +61,6 @@ pub(super) async fn handle_lightweight_control_request(
         global_session_id,
         provider_template,
         swarm_members,
-        swarm_runs,
         client_connections,
         event_history,
         event_counter,
@@ -178,7 +176,6 @@ pub(super) async fn handle_lightweight_control_request(
                 global_session_id,
                 provider_template,
                 swarm_members,
-                swarm_runs,
                 event_history,
                 event_counter,
                 swarm_event_tx,
@@ -210,7 +207,6 @@ pub(super) async fn handle_lightweight_control_request(
                 &client_event_tx,
                 sessions,
                 swarm_members,
-                swarm_runs,
                 event_history,
                 event_counter,
                 swarm_event_tx,

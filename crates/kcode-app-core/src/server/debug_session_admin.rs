@@ -1,7 +1,7 @@
 use super::{
-    RunState, SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
-    SwarmState, broadcast_swarm_status, create_headless_session, persist_swarm_state_for,
-    record_swarm_event, remove_background_tool_signal, remove_session_interrupt_queue,
+    SessionAgents, SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember,
+    broadcast_swarm_status, create_headless_session, persist_swarm_state_for, record_swarm_event,
+    remove_background_tool_signal, remove_session_interrupt_queue,
 };
 use crate::protocol::SwarmLifecycleStatus;
 use crate::provider::Provider;
@@ -56,7 +56,6 @@ pub(super) async fn maybe_handle_session_admin_command(
     session_id: &Arc<RwLock<String>>,
     provider: &Arc<dyn Provider>,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
-    swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
     event_history: &Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
     event_counter: &Arc<std::sync::atomic::AtomicU64>,
     swarm_event_tx: &broadcast::Sender<SwarmEvent>,
@@ -74,7 +73,6 @@ pub(super) async fn maybe_handle_session_admin_command(
             provider,
             &create_command,
             swarm_members,
-            swarm_runs,
             soft_interrupt_queues,
             selfdev_requested,
             None,
@@ -96,11 +94,7 @@ pub(super) async fn maybe_handle_session_admin_command(
                 super::swarm::swarm_root(&members, created_session_id)
             };
             if let Some(swarm_id) = swarm_id {
-                let swarm_state = SwarmState {
-                    members: Arc::clone(swarm_members),
-                    runs: Arc::clone(swarm_runs),
-                };
-                persist_swarm_state_for(&swarm_id, &swarm_state).await;
+                persist_swarm_state_for(&swarm_id, swarm_members).await;
             }
         }
         return Ok(Some(created));
@@ -165,11 +159,7 @@ pub(super) async fn maybe_handle_session_admin_command(
             // Membership is derived from the report-back chains, so removing the
             // member is the whole edit: a child that reported back to it becomes
             // a root of its own run, and a run left empty simply has no members.
-            let swarm_state = SwarmState {
-                members: Arc::clone(swarm_members),
-                runs: Arc::clone(swarm_runs),
-            };
-            persist_swarm_state_for(swarm_id, &swarm_state).await;
+            persist_swarm_state_for(swarm_id, swarm_members).await;
 
             broadcast_swarm_status(swarm_id, swarm_members).await;
         }
