@@ -258,15 +258,13 @@ event both hang off (`tool/todo.rs`). The view is the rows this session may work
 computed once on the server (`session_rows`): a session in a run gets the run's rows
 (`swarm_rows`); a session outside one gets the whole list.
 
-Remaining renderers: the info widget's pips and the separate swarm roster (the card and
-the side-panel page are gone). The client still reads the file for the info widget's
-rows: the 1s TTL cache in `helpers.rs` (`gather_todos_for_session`), `swarm_plan_todos`
-and the transcript's previous-list parse. Keep one read and one model, the renderers as
-pure functions.
+Remaining renderer: the separate swarm roster (the card, the page and the info widget's
+pips are gone). The client reads the file nowhere now: `gather_todos_for_session` and its
+1s TTL cache are deleted with `display.pin_todos`. Keep one read, one model, the
+renderers as pure functions.
 
-Delete: the pips and the widget's rows, that cache, the roster. surface: −2 renderers,
-−1 cache, −3 protocol member types, −1 item cache. lines ~−3,500 (the gallery is 3,100).
-risk: med.
+Delete: the roster and its adapter. surface: −1 renderer, −3 protocol member types.
+lines ~−3,500 (the gallery is 3,100). risk: med.
 
 **Landed 2026-10-04.** The server is the one reader: on every write and on subscribe it
 sends each session the rows it may work, and the pinned band renders them with its own
@@ -276,8 +274,11 @@ and its refresh thread; the plan broadcast, `rows_with_run_status`, `failed_reas
 `member_details` and the plan's derived summary; and then the inline card and the
 side-panel page with them (`TodosView`, `DisplayMessage::todos`, `render_todos_message`,
 the `/todos` command and its keybind, the `todo_card_toggle` binding, the card tests), so
-a `todo` result is one compact line naming its row count. Kept for the second half: the
-info widget's pips, its `gather_todos_for_session` cache, and the separate roster.
+a `todo` result is one compact line naming its row count; and then the info widget's todo
+region and pips (`info_widget_todos.rs`, `WidgetKind::Todos`, `InfoWidgetData.todos`,
+`swarm_plan_todos`, the overview page machinery), the client's last file read
+(`gather_todos_for_session` with its 1s TTL cache) and `display.pin_todos` with it. Kept
+for the last half: the separate swarm roster.
 
 **Smoke test (the second half is not landed, so check this on what is).** Build
 `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo

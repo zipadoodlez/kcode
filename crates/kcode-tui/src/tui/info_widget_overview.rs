@@ -1,96 +1,13 @@
 use super::info_widget::{AuthMethod, InfoWidgetData, UsageProvider};
 
-pub(crate) const MAX_TODO_LINES: usize = 12;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InfoPageKind {
-    CompactOnly,
-    TodosExpanded,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct InfoPage {
-    pub kind: InfoPageKind,
-    pub height: u16,
-}
-
-pub(crate) struct PageLayout {
-    pub pages: Vec<InfoPage>,
-    pub max_page_height: u16,
-    pub show_dots: bool,
-}
-
-pub(crate) fn compute_page_layout(
-    data: &InfoWidgetData,
-    _inner_width: usize,
-    inner_height: u16,
-) -> PageLayout {
-    let compact_height = compact_overview_height(data);
-    if compact_height == 0 {
-        return PageLayout {
-            pages: Vec::new(),
-            max_page_height: 0,
-            show_dots: false,
-        };
+/// Height the overview box wants: its compact sections when it has any and they
+/// fit the available inner height, zero otherwise.
+pub(crate) fn overview_height(data: &InfoWidgetData, inner_height: u16) -> u16 {
+    let height = compact_overview_height(data);
+    if height == 0 || height > inner_height {
+        return 0;
     }
-
-    let mut candidates: Vec<InfoPage> = Vec::new();
-    let todos_compact = compact_todos_height(data);
-
-    let todos_expanded = expanded_todos_height(data);
-    if todos_expanded > 0 {
-        candidates.push(InfoPage {
-            kind: InfoPageKind::TodosExpanded,
-            height: compact_height - todos_compact + todos_expanded,
-        });
-    }
-
-    let mut pages: Vec<InfoPage> = candidates
-        .into_iter()
-        .filter(|page| page.height <= inner_height)
-        .collect();
-
-    if pages.is_empty() {
-        if compact_height <= inner_height {
-            pages.push(InfoPage {
-                kind: InfoPageKind::CompactOnly,
-                height: compact_height,
-            });
-        } else {
-            return PageLayout {
-                pages,
-                max_page_height: 0,
-                show_dots: false,
-            };
-        }
-    }
-
-    let mut show_dots = false;
-    if pages.len() > 1 {
-        let filtered: Vec<InfoPage> = pages
-            .iter()
-            .copied()
-            .filter(|page| page.height < inner_height)
-            .collect();
-        if filtered.len() > 1 {
-            pages = filtered;
-            show_dots = true;
-        } else if filtered.len() == 1 {
-            pages = filtered;
-        }
-    }
-
-    let max_page_height = pages
-        .iter()
-        .map(|page| page.height + u16::from(show_dots))
-        .max()
-        .unwrap_or(0);
-
-    PageLayout {
-        pages,
-        max_page_height,
-        show_dots,
-    }
+    height
 }
 
 fn compact_context_height(data: &InfoWidgetData) -> u16 {
@@ -100,10 +17,6 @@ fn compact_context_height(data: &InfoWidgetData) -> u16 {
         return 1;
     }
     0
-}
-
-fn compact_todos_height(data: &InfoWidgetData) -> u16 {
-    if data.todos.is_empty() { 0 } else { 2 }
 }
 
 fn compact_model_height(data: &InfoWidgetData) -> u16 {
@@ -182,44 +95,24 @@ fn compact_git_height(data: &InfoWidgetData) -> u16 {
 fn compact_overview_height(data: &InfoWidgetData) -> u16 {
     compact_model_height(data)
         + compact_context_height(data)
-        + compact_todos_height(data)
         + compact_background_height(data)
         + compact_usage_height(data)
         + compact_kv_cache_height(data)
         + compact_git_height(data)
 }
 
-fn expanded_todos_height(data: &InfoWidgetData) -> u16 {
-    if data.todos.is_empty() {
-        return 0;
-    }
-
-    let available_lines = MAX_TODO_LINES.saturating_sub(1);
-    let todo_lines = data.todos.len().min(available_lines);
-    let mut height = 1 + u16::try_from(todo_lines).unwrap_or(u16::MAX);
-    if data.todos.len() > available_lines {
-        height += 1;
-    }
-    height
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{InfoPageKind, compute_page_layout};
+    use super::overview_height;
     use crate::tui::info_widget::InfoWidgetData;
 
     #[test]
-    fn compute_page_layout_falls_back_to_compact_page() {
+    fn overview_height_is_zero_when_a_section_does_not_fit() {
         let data = InfoWidgetData {
             model: Some("gpt-test".to_string()),
-            queue_mode: Some(true),
             ..Default::default()
         };
-
-        let layout = compute_page_layout(&data, 40, 8);
-
-        assert_eq!(layout.pages.len(), 1);
-        assert_eq!(layout.pages[0].kind, InfoPageKind::CompactOnly);
-        assert!(!layout.show_dots);
+        assert_eq!(overview_height(&data, 8), 1);
+        assert_eq!(overview_height(&data, 0), 0);
     }
 }

@@ -3,7 +3,6 @@
 mod clipboard_helper;
 pub(crate) mod model_names;
 
-use crate::todo::TaskItem;
 use crate::tui::info_widget::GitInfo;
 use crossterm::event::{KeyCode, KeyModifiers};
 use std::path::{Path, PathBuf};
@@ -15,15 +14,6 @@ use std::time::Duration;
 /// edits) instead of waiting out the TTL with a stale branch/dirty count.
 type GitInfoCacheEntry = (std::time::Instant, Option<GitInfo>, bool);
 static GIT_INFO_CACHE: Mutex<Option<GitInfoCacheEntry>> = Mutex::new(None);
-
-/// Stale-while-revalidate cache for per-session todos plus their goal-level
-/// the list. Module-level so the app can force a refresh the moment it persists
-/// a todo write locally, instead of showing the previous list until the TTL
-/// lapses.
-type TodosCacheEntry = (std::time::Instant, Vec<TaskItem>, bool);
-type TodosCache = std::collections::HashMap<String, TodosCacheEntry>;
-static TODOS_CACHE: std::sync::LazyLock<Mutex<TodosCache>> =
-    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// Backdate `Instant::now()` by up to `amount`, saturating instead of
 /// panicking when the clock's epoch is too recent.
@@ -65,19 +55,6 @@ pub(crate) fn invalidate_git_info_cache() {
     }
 }
 
-/// Force the todos widget cache to refetch the given session on its next read.
-///
-/// Call this right after the app persists a local todo write so the info widget
-/// reflects the new list immediately rather than after the 1s TTL.
-pub(crate) fn invalidate_todos_cache(session_id: &str) {
-    if let Ok(mut cache) = TODOS_CACHE.lock()
-        && let Some((ts, _todos, refreshing)) = cache.get_mut(session_id)
-    {
-        *ts = backdated_now(Duration::from_secs(3600));
-        *refreshing = false;
-    }
-}
-
 /// Open a file/URL with the system opener, unless suppressed.
 ///
 /// Every TUI-initiated `open::that_detached` must go through here: it honors
@@ -102,25 +79,6 @@ pub(crate) fn open_path_or_url_detached(
         ));
     }
     open::that_detached(target)
-}
-
-/// Test-only: snapshot `(elapsed_secs, refreshing)` for a session's todos cache
-/// entry, or `None` when no entry exists yet. Lets tests assert that
-/// invalidation backdates the entry so the next gather treats it as expired.
-#[cfg(test)]
-pub(crate) fn todos_cache_entry_age_for_tests(session_id: &str) -> Option<(u64, bool)> {
-    let cache = TODOS_CACHE.lock().ok()?;
-    cache
-        .get(session_id)
-        .map(|(ts, _todos, refreshing)| (ts.elapsed().as_secs(), *refreshing))
-}
-
-/// Test-only: clear the entire todos cache so tests start from a known state.
-#[cfg(test)]
-pub(crate) fn clear_todos_cache_for_tests() {
-    if let Ok(mut cache) = TODOS_CACHE.lock() {
-        cache.clear();
-    }
 }
 
 #[derive(Clone)]
@@ -944,67 +902,6 @@ pub(super) fn gather_git_info() -> Option<GitInfo> {
         });
     }
     None
-}
-
-/// Fetch a session's todos through a stale-while-revalidate cache, so the info
-/// widget renders the list without a disk read on every frame.
-pub(super) fn gather_todos_for_session(
-    working_dir: Option<&std::path::Path>,
-    session_id: Option<&str>,
-) -> Vec<TaskItem> {
-    if crate::tui::is_ssh_remote() {
-        return Vec::new();
-    }
-    use std::time::Instant;
-
-    const TTL: Duration = Duration::from_secs(1);
-
-    let Some(session_id) = session_id else {
-        return Vec::new();
-    };
-
-    let working_dir = working_dir.map(std::path::Path::to_path_buf);
-
-    fn fetch(working_dir: Option<&std::path::Path>, session_id: &str) -> Vec<TaskItem> {
-        crate::todo::load_tasks(working_dir, session_id).unwrap_or_default()
-    }
-
-    if let Ok(mut cache) = TODOS_CACHE.lock() {
-        if let Some((ts, todos, refreshing)) = cache.get_mut(session_id) {
-            if ts.elapsed() < TTL || *refreshing {
-                return todos.clone();
-            }
-            let stale = todos.clone();
-            *refreshing = true;
-            let session_id = session_id.to_string();
-            let working_dir = working_dir.clone();
-            std::thread::spawn(move || {
-                let todos = fetch(working_dir.as_deref(), &session_id);
-                if let Ok(mut cache) = TODOS_CACHE.lock() {
-                    cache.insert(session_id, (Instant::now(), todos, false));
-                }
-            });
-            return stale;
-        }
-
-        let session_id = session_id.to_string();
-        cache.insert(
-            session_id.clone(),
-            (
-                backdated_now(TTL + Duration::from_secs(1)),
-                Vec::new(),
-                true,
-            ),
-        );
-        let working_dir = working_dir.clone();
-        std::thread::spawn(move || {
-            let todos = fetch(working_dir.as_deref(), &session_id);
-            if let Ok(mut cache) = TODOS_CACHE.lock() {
-                cache.insert(session_id, (Instant::now(), todos, false));
-            }
-        });
-    }
-    Vec::new()
 }
 
 #[cfg(not(test))]

@@ -404,7 +404,6 @@ fn render_background_task_progress_message_uses_box_with_progress_bar() {
     assert!(!plain.contains("**Background task progress**"));
 }
 
-
 #[test]
 fn render_background_task_messages_prefer_display_name() {
     let completion = DisplayMessage::background_task(

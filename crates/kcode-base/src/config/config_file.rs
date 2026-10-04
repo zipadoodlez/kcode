@@ -183,15 +183,6 @@ impl Config {
         Ok(())
     }
 
-    /// Update the persisted pinned-todos preference.
-    pub fn set_pin_todos(pin: bool) -> anyhow::Result<()> {
-        let mut cfg = Self::load_for_update()?;
-        cfg.display.pin_todos = pin;
-        cfg.save()?;
-        crate::logging::info(&format!("Saved display.pin_todos to config: {}", pin));
-        Ok(())
-    }
-
     /// Update the persisted show-kgrep-output preference.
     pub fn set_show_kgrep_output(show: bool) -> anyhow::Result<()> {
         let mut cfg = Self::load_for_update()?;

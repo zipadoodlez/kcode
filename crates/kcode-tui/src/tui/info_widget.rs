@@ -21,21 +21,17 @@ pub(crate) mod swarm_gallery;
 mod text;
 #[path = "info_widget_tips.rs"]
 mod tips;
-#[path = "info_widget_todos.rs"]
-mod todos_render;
 #[path = "info_widget_usage.rs"]
 mod usage_render;
-use super::info_widget_overview::{InfoPageKind, MAX_TODO_LINES, compute_page_layout};
+use super::info_widget_overview::overview_height;
 use super::workspace_map::VisibleWorkspaceRow;
 use crate::prompt::ContextInfo;
 use crate::protocol::SwarmMemberStatus;
 use crate::provider::DEFAULT_CONTEXT_LIMIT;
-use crate::todo::TaskItem;
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Borders, Paragraph},
 };
-use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -45,8 +41,6 @@ use swarm_background::{render_background_compact, render_background_widget, rend
 use text::truncate_smart;
 pub(crate) use tips::occasional_status_tip;
 use tips::{render_tips_widget, tips_widget_height};
-pub(crate) use todos_render::swarm_plan_todos;
-use todos_render::{render_todos_compact, render_todos_expanded, render_todos_widget};
 #[cfg(test)]
 use usage_render::render_usage_pill;
 use usage_render::{render_context_usage_line, render_usage_compact, render_usage_widget};
@@ -58,8 +52,6 @@ pub enum WidgetKind {
     Overview,
     /// Niri-style workspace map preview
     WorkspaceMap,
-    /// Todo list with progress
-    Todos,
     /// Token/context usage bar
     ContextUsage,
     /// Subagents/sessions status
@@ -86,7 +78,6 @@ impl WidgetKind {
         match self {
             WidgetKind::WorkspaceMap => 1,
             WidgetKind::Overview => 2,
-            WidgetKind::Todos => 3,
             WidgetKind::ContextUsage => 4,
             WidgetKind::UsageLimits => 5, // Bumped up - important when near limits
             WidgetKind::KvCache => 6,
@@ -104,7 +95,6 @@ impl WidgetKind {
         match self {
             WidgetKind::WorkspaceMap => Side::Right,
             WidgetKind::Overview => Side::Right,
-            WidgetKind::Todos => Side::Right,
             WidgetKind::ContextUsage => Side::Right,
             WidgetKind::SwarmStatus => Side::Left,
             WidgetKind::Compaction => Side::Left,
@@ -122,7 +112,6 @@ impl WidgetKind {
         match self {
             WidgetKind::WorkspaceMap => 1,
             WidgetKind::Overview => 8,
-            WidgetKind::Todos => 3,
             WidgetKind::ContextUsage => 2,
             WidgetKind::SwarmStatus => 3,
             WidgetKind::Compaction => 3,
@@ -140,7 +129,6 @@ impl WidgetKind {
         &[
             WidgetKind::WorkspaceMap,
             WidgetKind::Overview,
-            WidgetKind::Todos,
             WidgetKind::ContextUsage,
             WidgetKind::UsageLimits,
             WidgetKind::KvCache,
@@ -157,7 +145,6 @@ impl WidgetKind {
         match self {
             WidgetKind::WorkspaceMap => "workspace",
             WidgetKind::Overview => "overview",
-            WidgetKind::Todos => "todos",
             WidgetKind::ContextUsage => "context",
             WidgetKind::SwarmStatus => "swarm",
             WidgetKind::BackgroundTasks => "background",
@@ -190,8 +177,7 @@ impl Side {
 pub(crate) fn is_overview_mergeable(kind: WidgetKind) -> bool {
     matches!(
         kind,
-        WidgetKind::Todos
-            | WidgetKind::ContextUsage
+        WidgetKind::ContextUsage
             | WidgetKind::SwarmStatus
             | WidgetKind::BackgroundTasks
             | WidgetKind::Compaction
@@ -481,17 +467,9 @@ impl GitInfo {
     }
 }
 
-const PAGE_SWITCH_SECONDS: u64 = 30;
-
 /// Data to display in the info widget
 #[derive(Debug, Default, Clone)]
 pub struct InfoWidgetData {
-    pub todos: Vec<TaskItem>,
-    /// True when `todos` is actually a projection of the shared swarm plan
-    /// (task DAG) rather than this session's private todo list. The widget
-    /// renders a "Plan" header instead of "Todos" so the two are not
-    /// conflated.
-    pub todos_are_swarm_plan: bool,
     pub context_info: Option<ContextInfo>,
     /// True when context state is being updated and no authoritative snapshot is available.
     pub context_info_stale: bool,
@@ -557,8 +535,7 @@ impl InfoWidgetData {
     }
 
     pub fn is_empty(&self) -> bool {
-        !self.has_data_for(WidgetKind::Todos)
-            && self.context_info.is_none()
+        self.context_info.is_none()
             && self.queue_mode.is_none()
             && self.model.is_none()
             && self.swarm_info.is_none()
@@ -585,9 +562,6 @@ impl InfoWidgetData {
                     .map(|c| c.total_chars > 0)
                     .unwrap_or(false)
                 {
-                    sections += 1;
-                }
-                if self.has_data_for(WidgetKind::Todos) {
                     sections += 1;
                 }
                 if self
@@ -626,7 +600,6 @@ impl InfoWidgetData {
                 // Only useful as a "join" mode when there are multiple sections.
                 sections >= 2
             }
-            WidgetKind::Todos => todos_render::has_open_items(&self.todos),
             WidgetKind::ContextUsage => {
                 self.context_info_stale
                     || self
@@ -719,22 +692,11 @@ impl InfoWidgetData {
     }
 }
 
-/// State for a single widget instance
-#[derive(Debug, Clone, Default)]
-struct SingleWidgetState {
-    /// Current page index (for widgets with multiple pages)
-    page_index: usize,
-    /// Last time the page advanced
-    last_page_switch: Option<Instant>,
-}
-
 /// Global state for all widgets
 #[derive(Debug, Clone)]
 struct WidgetsState {
     /// Whether the user has disabled widgets
     enabled: bool,
-    /// Per-widget state (keyed by WidgetKind)
-    widget_states: HashMap<WidgetKind, SingleWidgetState>,
     /// Current placements (updated each frame)
     placements: Vec<WidgetPlacement>,
     /// Persistent widget anchors (HUD slot memory, including hidden-in-place ones)
@@ -757,7 +719,6 @@ impl Default for WidgetsState {
     fn default() -> Self {
         Self {
             enabled: true,
-            widget_states: HashMap::new(),
             placements: Vec::new(),
             anchors: Vec::new(),
             settlement: super::info_widget_settle::SettlementTracker::default(),
@@ -954,23 +915,7 @@ pub(crate) fn calculate_widget_height(
                 super::workspace_map_widget::preferred_size(&data.workspace_rows);
             preferred_h.min(max_height.saturating_sub(border_height))
         }
-        WidgetKind::Overview => {
-            let overview = data.clone();
-            let inner_h = max_height.saturating_sub(border_height);
-            let layout = compute_page_layout(&overview, inner_width, inner_h);
-            if layout.max_page_height == 0 {
-                return 0;
-            }
-            layout.max_page_height
-        }
-        WidgetKind::Todos => {
-            if data.todos.is_empty() {
-                return 0;
-            }
-            // Header (with inline pip meter) + up to 5 items
-            let items = data.todos.len().min(5) as u16;
-            1 + items + if data.todos.len() > 5 { 1 } else { 0 }
-        }
+        WidgetKind::Overview => overview_height(data, max_height.saturating_sub(border_height)),
         WidgetKind::ContextUsage => {
             if data
                 .context_info
@@ -1139,9 +1084,7 @@ fn render_single_widget(frame: &mut Frame, placement: &WidgetPlacement, data: &I
 
     if placement.kind == WidgetKind::Overview {
         // Check if overview would actually render content before drawing the border
-        let overview = data.clone();
-        let layout = compute_page_layout(&overview, inner.width as usize, inner.height);
-        if layout.pages.is_empty() || layout.max_page_height == 0 {
+        if overview_height(data, inner.height) == 0 {
             return;
         }
         frame.render_widget(block, rect);
@@ -1175,58 +1118,10 @@ fn render_overview_widget(frame: &mut Frame, inner: Rect, data: &InfoWidgetData)
         return;
     }
 
-    let overview = data.clone();
-
-    let layout = compute_page_layout(&overview, inner.width as usize, inner.height);
-    if layout.pages.is_empty() {
-        return;
-    }
-
-    let mut guard = get_or_init_state();
-    let state = match guard.as_mut() {
-        Some(state) => state,
-        None => return,
-    };
-    let widget_state = state.widget_states.entry(WidgetKind::Overview).or_default();
-
-    if layout.pages.len() > 1 {
-        let now = Instant::now();
-        let should_advance = widget_state
-            .last_page_switch
-            .map(|last| now.duration_since(last).as_secs() >= PAGE_SWITCH_SECONDS)
-            .unwrap_or(true);
-        if should_advance {
-            widget_state.page_index = (widget_state.page_index + 1) % layout.pages.len();
-            widget_state.last_page_switch = Some(now);
-        }
-    } else {
-        widget_state.page_index = 0;
-        widget_state.last_page_switch = None;
-    }
-
-    let page_index = widget_state.page_index.min(layout.pages.len() - 1);
-    let page = layout.pages[page_index];
-    let mut lines = render_page(page.kind, &overview, inner);
-
-    // If the page rendered no content, bail out to avoid an empty box
+    let mut lines = render_sections(data, inner);
     if lines.is_empty() {
         return;
     }
-
-    if layout.show_dots && inner.height > 0 {
-        let mut dots: Vec<Span<'static>> = Vec::new();
-        for i in 0..layout.pages.len() {
-            if i == page_index {
-                dots.push(Span::styled("● ", Style::default().fg(pending_color())));
-            } else {
-                dots.push(Span::styled("○ ", Style::default().fg(border_color())));
-            }
-        }
-        if !dots.is_empty() {
-            lines.push(Line::from(dots));
-        }
-    }
-
     lines.truncate(inner.height as usize);
     frame.render_widget(Paragraph::new(lines), inner);
 }
@@ -1238,7 +1133,6 @@ fn render_widget_content(
     match kind {
         WidgetKind::WorkspaceMap => Vec::new(), // Handled specially in render_single_widget
         WidgetKind::Overview => Vec::new(),     // Handled specially in render_single_widget
-        WidgetKind::Todos => render_todos_widget(data, inner),
         WidgetKind::ContextUsage => render_context_widget(data, inner),
         WidgetKind::SwarmStatus => render_swarm_widget(data, inner),
         WidgetKind::BackgroundTasks => render_background_widget(data, inner),
@@ -1458,20 +1352,7 @@ fn render_context_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static
     )]
 }
 
-fn render_page(kind: InfoPageKind, data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
-    match kind {
-        InfoPageKind::CompactOnly => render_sections(data, inner, None),
-        InfoPageKind::TodosExpanded => {
-            render_sections(data, inner, Some(InfoPageKind::TodosExpanded))
-        }
-    }
-}
-
-fn render_sections(
-    data: &InfoWidgetData,
-    inner: Rect,
-    focus: Option<InfoPageKind>,
-) -> Vec<Line<'static>> {
+fn render_sections(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
     // Model info at the top
@@ -1483,14 +1364,6 @@ fn render_sections(
         && info.total_chars > 0
     {
         lines.extend(render_context_compact(data, inner));
-    }
-
-    if !data.todos.is_empty() {
-        if matches!(focus, Some(InfoPageKind::TodosExpanded)) {
-            lines.extend(render_todos_expanded(data, inner));
-        } else {
-            lines.extend(render_todos_compact(data, inner));
-        }
     }
 
     // Background tasks info

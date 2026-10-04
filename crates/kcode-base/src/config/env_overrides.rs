@@ -153,11 +153,6 @@ impl Config {
                 DiffDisplayMode::Off
             };
         }
-        if let Ok(v) = std::env::var("KCODE_PIN_TODOS")
-            && let Some(parsed) = parse_env_bool(&v)
-        {
-            self.display.pin_todos = parsed;
-        }
         if let Ok(v) = std::env::var("KCODE_DISPLAY_CENTERED") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.display.centered = parsed;

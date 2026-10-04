@@ -17,43 +17,6 @@ use crate::tui::info_widget::{
     UsageProvider,
 };
 
-fn todo(id: &str, status: &str) -> crate::todo::TaskItem {
-    crate::todo::TaskItem {
-        content: format!("task {id}"),
-        status: status.to_string(),
-        priority: "high".to_string(),
-        id: id.to_string(),
-        ..Default::default()
-    }
-}
-
-#[test]
-fn a_fully_finished_todo_list_is_not_eligible_for_the_widget() {
-    // The widget draws whatever the model last wrote, so a finished plan used
-    // to sit on screen until the model happened to clear it. Any terminal
-    // status counts, including the "done" alias.
-    let data = InfoWidgetData {
-        todos: vec![
-            todo("a", "completed"),
-            todo("b", "cancelled"),
-            todo("c", "done"),
-        ],
-        ..Default::default()
-    };
-    assert!(!data.has_data_for(WidgetKind::Todos));
-    assert!(data.is_empty());
-}
-
-#[test]
-fn one_open_todo_keeps_the_widget_eligible() {
-    let data = InfoWidgetData {
-        todos: vec![todo("a", "completed"), todo("b", "in_progress")],
-        ..Default::default()
-    };
-    assert!(data.has_data_for(WidgetKind::Todos));
-    assert!(!data.is_empty());
-}
-
 /// Kitchen-sink data: every enabled widget kind is eligible at once, so the
 /// placement pass has maximum contention for margin space.
 fn contended_data() -> InfoWidgetData {
@@ -67,7 +30,6 @@ fn contended_data() -> InfoWidgetData {
             total_chars: 60_000,
             ..Default::default()
         }),
-        todos: vec![todo("t1", "in_progress"), todo("t2", "pending")],
         swarm_info: Some(SwarmInfo {
             session_count: 4,
             subagent_status: Some("running subtask".to_string()),
@@ -249,59 +211,6 @@ fn degenerate_sizes_with_full_contention_never_panic_or_escape() {
     }
 }
 
-/// (b) Contention between the standalone todos and background widgets.
-///
-/// When both are eligible, Overview (higher priority) merges them, so the
-/// standalone widgets only compete where Overview cannot fit:
-/// - a single short pocket goes to the highest-priority standalone contender
-///   (todos) and background is silently dropped, without overlap;
-/// - two short pockets let both place disjointly.
-#[test]
-fn todo_and_background_contention_prioritizes_todos_without_overlap() {
-    let data = InfoWidgetData {
-        todos: vec![todo("t1", "in_progress"), todo("t2", "pending")],
-        background_info: Some(BackgroundInfo {
-            running_count: 2,
-            running_tasks: vec!["bash".to_string(), "task".to_string()],
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    // One pocket of 6 rows: Overview (min 8 + borders) can't fit; todos
-    // (height 5) wins the pocket and background is dropped.
-    let area = Rect::new(0, 0, 80, 6);
-    let outcome = calculate_placements_anchored(area, &margins_for(40, 6, false), &data, true, &[]);
-    assert_placements_sane("short pocket", area, &outcome.visible);
-    let kinds: Vec<WidgetKind> = outcome.visible.iter().map(|p| p.kind).collect();
-    assert_eq!(
-        kinds,
-        vec![WidgetKind::Todos],
-        "highest-priority standalone contender should win the only pocket"
-    );
-
-    // Two 7-row pockets separated by a full-width row: Overview still can't
-    // fit (needs 10 rows), so todos and background each take a pocket without
-    // overlapping.
-    let mut widths = vec![40u16; 15];
-    widths[7] = 0;
-    let area = Rect::new(0, 0, 80, 15);
-    let margins = Margins {
-        right_widths: widths,
-        left_widths: Vec::new(),
-        centered: false,
-        scroll_top: 10,
-        ..Default::default()
-    };
-    let outcome = calculate_placements_anchored(area, &margins, &data, true, &[]);
-    assert_placements_sane("two pockets", area, &outcome.visible);
-    let kinds: Vec<WidgetKind> = outcome.visible.iter().map(|p| p.kind).collect();
-    assert!(
-        kinds.contains(&WidgetKind::Todos) && kinds.contains(&WidgetKind::BackgroundTasks),
-        "both standalone widgets should place across two pockets, got {kinds:?}"
-    );
-}
-
 /// (b) When Overview is shown, its mergeable widgets (todos, background,
 /// swarm, ...) must not also place standalone.
 #[test]
@@ -406,8 +315,8 @@ fn stale_anchor_above_shifted_area_is_rehomed_not_drawn_out_of_bounds() {
     let first = calculate_placements_anchored(area0, &margins_for(40, 20, false), &data, true, &[]);
     assert!(!first.visible.is_empty());
     assert!(
-        first.visible.iter().any(|p| p.rect.y < 5),
-        "expected at least one widget anchored in the top rows"
+        !first.anchors.is_empty(),
+        "expected at least one widget to record an anchor"
     );
 
     // The area shifts down by 5 rows.

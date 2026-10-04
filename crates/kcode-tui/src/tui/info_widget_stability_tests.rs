@@ -18,22 +18,6 @@ fn rich_data() -> InfoWidgetData {
     InfoWidgetData {
         model: Some("gpt-test".to_string()),
         queue_mode: Some(true),
-        todos: vec![
-            crate::todo::TaskItem {
-                content: "first task".to_string(),
-                status: "in_progress".to_string(),
-                priority: "high".to_string(),
-                id: "t1".to_string(),
-                ..Default::default()
-            },
-            crate::todo::TaskItem {
-                content: "second task".to_string(),
-                status: "pending".to_string(),
-                priority: "medium".to_string(),
-                id: "t2".to_string(),
-                ..Default::default()
-            },
-        ],
         background_info: Some(BackgroundInfo {
             running_count: 2,
             running_tasks: vec!["bash".to_string(), "task".to_string()],

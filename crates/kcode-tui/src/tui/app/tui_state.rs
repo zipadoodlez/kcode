@@ -1217,26 +1217,6 @@ impl crate::tui::TuiState for App {
     }
 
     fn info_widget_data(&self) -> crate::tui::info_widget::InfoWidgetData {
-        let session_id = self.active_client_session_id();
-
-        let todos_are_swarm_plan = !self.swarm.plan_items.is_empty();
-        let todos = if crate::config::config().display.pin_todos && !todos_are_swarm_plan {
-            // The pinned band is the single source of truth while enabled. Do
-            // not duplicate the same session todos in a margin or overview
-            // info widget.
-            Vec::new()
-        } else if todos_are_swarm_plan {
-            crate::tui::info_widget::swarm_plan_todos(&self.swarm.plan_items)
-        } else {
-            gather_todos_for_session(
-                self.session
-                    .working_dir
-                    .as_deref()
-                    .map(std::path::Path::new),
-                session_id,
-            )
-        };
-
         let context_snapshot = self.context_snapshot();
         let context_info = if let Some(context_info) = context_snapshot.info.clone() {
             (context_info.total_chars > 0).then_some(context_info)
@@ -1510,8 +1490,6 @@ impl crate::tui::TuiState for App {
         };
 
         crate::tui::info_widget::InfoWidgetData {
-            todos,
-            todos_are_swarm_plan,
             context_info,
             context_info_stale: !context_snapshot.fresh,
             queue_mode: Some(self.queue_mode),

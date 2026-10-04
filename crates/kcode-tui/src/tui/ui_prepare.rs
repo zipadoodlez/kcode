@@ -550,11 +550,7 @@ pub(super) fn prepare_messages(
         width,
         height,
         diff_mode: app.diff_mode(),
-        // Pinning changes which tool messages participate in the transcript.
-        messages_version: app
-            .display_messages_version()
-            .wrapping_mul(2)
-            .wrapping_add(u64::from(crate::config::config().display.pin_todos)),
+        messages_version: app.display_messages_version(),
         centered: app.centered_mode(),
         is_processing: app.is_processing(),
         streaming_text_len: app.streaming_text().len(),
@@ -949,11 +945,7 @@ fn prepare_body_cached(app: &dyn TuiState, width: u16) -> Arc<PreparedMessages> 
     let key = BodyCacheKey {
         width,
         diff_mode: app.diff_mode(),
-        // Pinning changes which tool messages participate in the transcript.
-        messages_version: app
-            .display_messages_version()
-            .wrapping_mul(2)
-            .wrapping_add(u64::from(crate::config::config().display.pin_todos)),
+        messages_version: app.display_messages_version(),
         centered: app.centered_mode(),
         swarm_members_signature: swarm_members_signature(&app.swarm_members_for_transcript()),
     };
@@ -1168,11 +1160,10 @@ fn render_message_into(
     let centered = ctx.centered;
     let app = ctx.app;
     let role = msg.effective_role();
-    // The pinned band is the canonical todo presentation while enabled. Keep
-    // todo tool messages in display_messages for history/session fidelity, but
-    // omit their duplicate cards from the prepared transcript.
+    // The pinned list is the canonical todo presentation. Keep todo tool
+    // messages in display_messages for history/session fidelity, but omit their
+    // duplicate lines from the prepared transcript.
     if role == "tool"
-        && crate::config::config().display.pin_todos
         && msg
             .tool_data
             .as_ref()

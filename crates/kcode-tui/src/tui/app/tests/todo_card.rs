@@ -10,24 +10,6 @@ fn pinned_band_todo(id: &str, content: &str, status: &str) -> crate::todo::TaskI
 }
 
 #[test]
-fn pinned_todos_are_omitted_from_info_widgets() {
-    let _env_lock = crate::storage::lock_test_env();
-    let app = create_test_app();
-    let session_id = app.session.id.clone();
-    crate::todo::save_tasks(None, 
-        &session_id,
-        &[pinned_band_todo("t1", "only in pinned band", "pending")],
-    )
-    .unwrap();
-
-    let info = app.info_widget_data();
-    assert!(info.todos.is_empty());
-    assert!(!info.has_data_for(crate::tui::info_widget::WidgetKind::Todos));
-
-    crate::todo::save_tasks(None, &session_id, &[]).unwrap();
-}
-
-#[test]
 fn pinned_todos_hide_todo_tool_messages_from_the_transcript() {
     let _env_lock = crate::storage::lock_test_env();
     let mut app = create_test_app();

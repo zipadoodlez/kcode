@@ -40,10 +40,6 @@ pub struct DisplayConfig {
     /// Markdown block spacing style (compact/document, default: compact)
     #[serde(deserialize_with = "crate::serde_lenient::lenient_enum")]
     pub markdown_spacing: MarkdownSpacingMode,
-    /// Pin the full session todo list to the top of the chat transcript while
-    /// it scrolls, like the sticky previous-prompt preview (default: true)
-    #[serde(default = "default_true")]
-    pub pin_todos: bool,
     /// Wrap long lines in the pinned diff pane (default: true)
     pub diff_line_wrap: bool,
     /// FPS for active redraw (processing, streaming): 1-120 (default: 60)
@@ -109,7 +105,6 @@ impl Default for DisplayConfig {
         Self {
             diff_mode: DiffDisplayMode::default(),
             show_diffs: None,
-            pin_todos: true,
             queue_mode: false,
             auto_server_reload: true,
             mouse_capture: true,
@@ -199,18 +194,6 @@ mod tests {
         let missing: DisplayConfig = serde_json::from_str("{}").expect("display config");
         assert!(missing.show_thinking);
         assert_eq!(missing.reasoning_display(), ReasoningDisplayMode::Full);
-    }
-
-    #[test]
-    fn todos_are_pinned_by_default_but_can_be_disabled() {
-        assert!(DisplayConfig::default().pin_todos);
-
-        let missing: DisplayConfig = serde_json::from_str("{}").expect("display config");
-        assert!(missing.pin_todos);
-
-        let disabled: DisplayConfig =
-            serde_json::from_str(r#"{"pin_todos":false}"#).expect("display config");
-        assert!(!disabled.pin_todos);
     }
 
     #[test]

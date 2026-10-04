@@ -123,14 +123,8 @@ impl App {
             super::helpers::invalidate_git_info_cache();
         }
 
-        // The todo tool rewrites the per-session todo list.
-        if (name == "todo" || name == "todowrite" || name == "todo_write")
-            && let Some(session_id) = self.active_client_session_id().map(str::to_string)
-        {
-            super::helpers::invalidate_todos_cache(&session_id);
-            // Local sessions also receive TodoUpdated, while remote sessions only
-            // observe the completed tool call. Refresh here as well so both paths
-            // adopt the same todo-derived title that /resume displays.
+        // The todo tool rewrites the work list, which the session title reads.
+        if name == "todo" || name == "todowrite" || name == "todo_write" {
             self.update_terminal_title();
         }
     }
