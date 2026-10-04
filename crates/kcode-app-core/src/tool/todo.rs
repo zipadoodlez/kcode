@@ -113,6 +113,7 @@ fn apply(input: &TodoInput, rows: &mut Vec<TaskItem>, session_id: &str) -> Resul
             let id = nonempty(input.id.as_deref(), "close needs id")?;
             close_row(
                 rows,
+                session_id,
                 id,
                 input.result.as_deref().unwrap_or_default(),
                 close_artifact(input),

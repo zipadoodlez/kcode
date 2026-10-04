@@ -247,10 +247,15 @@ pub fn open_ids(rows: &[TaskItem]) -> String {
 /// row is not gone with nothing kept: `artifact` is the machine-readable half a
 /// closer may bring (the words of the result stay the result's).
 ///
+/// A run works the rows it holds, so a row that names another session as its holder
+/// is refused: the user's session takes a row by writing it first, and a row that
+/// moved mid-turn is no longer the moved-from turn's to finish.
+///
 /// The row is the last thing to go, and the close drops its id from every
 /// dependent's `blocked_by`; an entry there always names an open row (rule 7).
 pub fn close_row(
     rows: &mut Vec<TaskItem>,
+    session_id: &str,
     id: &str,
     result: &str,
     artifact: Option<serde_json::Value>,
@@ -264,6 +269,13 @@ pub fn close_row(
         .find(|row| row.id == id)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("no task {id:?}; open ids: {}", open_ids(rows)))?;
+    if let Some(holder) = row.assigned_to.as_deref()
+        && holder != session_id
+    {
+        bail!(
+            "task {id:?} is held by {holder}, not {session_id}; a run closes only the rows it holds"
+        );
+    }
     if let Some(child) = rows.iter().find(|row| row.parent.as_deref() == Some(id)) {
         bail!(
             "{id} still has open children: {} {}",
@@ -294,42 +306,6 @@ pub fn close_row(
     Ok(())
 }
 
-/// Close one row in the file: read the list, apply [`close_row`], write it back.
-///
-/// This is the second caller's half of rule 2. The `todo` tool closes a row it
-/// already holds in memory; the plan engine closes a node whose row is only in the
-/// file, and both go through the same rules and the same write.
-///
-/// A run works the rows it holds, so a run closes only a row that names nobody or
-/// names it: the user's session takes any row by writing it, and a row that moved
-/// mid-turn is no longer the moved-from turn's to finish. The in-memory close the
-/// `todo` tool uses has no such check, because that *is* the person taking the row.
-pub fn close_row_on_disk(
-    working_dir: Option<&Path>,
-    session_id: &str,
-    id: &str,
-    result: &str,
-    artifact: Option<serde_json::Value>,
-) -> Result<Vec<TaskItem>> {
-    let mut rows = load_tasks(working_dir, session_id)?;
-    if let Some(row) = rows.iter().find(|row| row.id == id)
-        && let Some(holder) = row.assigned_to.as_deref()
-        && holder != session_id
-    {
-        bail!(
-            "task {id:?} is held by {holder}, not {session_id}; a run closes only the rows it holds"
-        );
-    }
-    let before: std::collections::HashMap<String, TaskItem> = rows
-        .iter()
-        .map(|row| (row.id.clone(), row.clone()))
-        .collect();
-    close_row(&mut rows, id, result, artifact)?;
-    let touched = changed_rows(&rows, &before);
-    save_tasks(working_dir, session_id, &rows)?;
-    Ok(touched)
-}
-
 /// The rows a write changed, by id, so a caller can bring its own copy of the list
 /// to the same state the store wrote. A close touches the parent that takes the
 /// record and every row that no longer names the closed row as a blocker.
@@ -343,26 +319,8 @@ fn changed_rows(
         .collect()
 }
 
-/// Claim one open row for `holder` in the file. The holder is a fact about the
-/// list, so it is written where the list is (rule 2): the row itself names who
-/// owes it, and a re-read after a restart finds it there.
-///
-/// The read-modify-write is the shape [`close_row_on_disk`] already has, so a hand
-/// edit between the read and the write is an input rather than a conflict. The row
-/// must be open: a claim on a row that is not in the list is refused, because a
-/// holder with no row is the plan holding state the list does not have.
-pub fn claim_row_on_disk(
-    working_dir: Option<&Path>,
-    session_id: &str,
-    id: &str,
-    holder: &str,
-) -> Result<TaskItem> {
-    set_row_holder_on_disk(working_dir, session_id, id, Some(holder))
-}
-
-/// Release one open row's claim in the file, the counterpart of
-/// [`claim_row_on_disk`]: a row whose holder can never come back goes back to the
-/// list unclaimed so the next dispatch can seat it. This is what the stranded
+/// Release one open row's claim in the file: a row whose holder can never come back goes
+/// back to the list unclaimed so the next dispatch can seat it. This is what the stranded
 /// reclaim and the salvage sweep write; a holder that is merely between turns is
 /// left alone, because it still owes the row.
 pub fn release_row_on_disk(
@@ -410,70 +368,6 @@ pub fn rename_row_holder_on_disk(
         if row.assigned_to.as_deref() == Some(old_session_id) {
             row.assigned_to = Some(new_session_id.to_string());
         }
-    }
-    let touched = changed_rows(&rows, &before);
-    save_tasks(working_dir, session_id, &rows)?;
-    Ok(touched)
-}
-
-/// Decompose one row into child rows, in the file. A decomposition is rows: each
-/// child is added with `parent = id`, the row gains a blocker on every child so it
-/// is not picked while they are open, and the file is written back. The store owns
-/// each child's id, `status` and `priority` (rule 2), so a caller brings words, a
-/// kind, and any blockers on rows that already exist, never a node id.
-///
-/// The row is the one at the top of the decomposition: it re-runs as the synthesis
-/// once the last child closes, so it is a join, not a leaf. Who may decompose it
-/// is the caller's rule, not the file's: the swarm's plan holds the dispatch, so
-/// the handler checks the holder before it calls here.
-pub fn expand_row_on_disk(
-    working_dir: Option<&Path>,
-    session_id: &str,
-    id: &str,
-    children: Vec<TaskItem>,
-) -> Result<Vec<TaskItem>> {
-    if children.is_empty() {
-        bail!("expand needs at least one child");
-    }
-    let mut rows = load_tasks(working_dir, session_id)?;
-    rows.iter()
-        .find(|row| row.id == id)
-        .ok_or_else(|| anyhow::anyhow!("no task {id:?}; open ids: {}", open_ids(&rows)))?;
-    if rows.len() + children.len() > kcode_plan::MAX_PLAN_ITEMS {
-        bail!(
-            "expand would exceed the {}-row plan bound; finish or drop open rows first",
-            kcode_plan::MAX_PLAN_ITEMS
-        );
-    }
-
-    let before: std::collections::HashMap<String, TaskItem> = rows
-        .iter()
-        .map(|row| (row.id.clone(), row.clone()))
-        .collect();
-    let mut child_ids = Vec::with_capacity(children.len());
-    for mut child in children {
-        child.parent = Some(id.to_string());
-        child.assigned_to = None;
-        child_ids.push(add_row(&mut rows, child)?);
-    }
-    if let Some(row) = rows.iter_mut().find(|row| row.id == id) {
-        // The row is a join now, and it keeps its holder: the one that decomposed
-        // it is the one that integrates the children, so the row stays claimed
-        // while they run and is handed back to the same session when the last one
-        // closes (see the plan's s11).
-        for child_id in child_ids {
-            if !row.blocked_by.contains(&child_id) {
-                row.blocked_by.push(child_id);
-            }
-        }
-    }
-
-    let cycle = kcode_plan::cycle_item_ids(&rows);
-    if !cycle.is_empty() {
-        bail!(
-            "expand would create a dependency cycle among row(s): {}",
-            cycle.join(", ")
-        );
     }
     let touched = changed_rows(&rows, &before);
     save_tasks(working_dir, session_id, &rows)?;
@@ -630,41 +524,36 @@ mod tests {
     }
 
     /// A run closes only the rows it holds: a row that moved to another session
-    /// mid-turn is refused, and the row stays open for whoever holds it now.
+    /// mid-turn is refused, and the row stays open for whoever holds it now. The
+    /// user's session reaches one by taking it first, which is a write.
     #[test]
-    fn a_run_closes_only_a_row_it_still_holds() {
-        let repo = scratch_repo("close-holder");
-        let row = TaskItem {
+    fn a_close_refuses_a_row_held_by_another_session() {
+        let mut rows = vec![TaskItem {
             id: "t1".to_string(),
             content: "work".to_string(),
+            kind: Some("implement".to_string()),
             assigned_to: Some("worker".to_string()),
             ..Default::default()
-        };
-        save_tasks(Some(&repo), "me", &[row]).expect("write the work list");
+        }];
 
-        let err = close_row_on_disk(Some(&repo), "moved-away", "t1", "done: x", None).unwrap_err();
+        let err = close_row(&mut rows, "moved-away", "t1", "done: x", None).unwrap_err();
         assert!(
             err.to_string().contains("held by worker"),
             "unexpected error: {err}"
         );
-        assert_eq!(
-            load_tasks(Some(&repo), "me").expect("read").len(),
-            1,
-            "a refused close leaves the row open"
-        );
+        assert_eq!(rows.len(), 1, "a refused close leaves the row open");
 
-        // The holder closes it, and a row nobody holds is anybody's to close.
-        close_row_on_disk(
-            Some(&repo),
-            "worker",
+        // Taking it is a write, and then it is anybody's to close.
+        rows[0].assigned_to = None;
+        close_row(
+            &mut rows,
+            "me",
             "t1",
             "done: the work is in commit abc",
             None,
         )
-        .expect("the holder closes its own row");
-        assert!(load_tasks(Some(&repo), "me").expect("read").is_empty());
-
-        let _ = std::fs::remove_dir_all(&repo);
+        .expect("a row nobody holds is anybody's to close");
+        assert!(rows.is_empty());
     }
 
     /// A run that typed no words gets its anchor from the rows it holds: the first
@@ -747,40 +636,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
-    /// The holder is a fact about the list, so a claim writes it on the row and a
-    /// release takes it back. Everything else about the row is left as it was, and a
-    /// claim on a row the list does not have is refused rather than invented: a
-    /// holder with no row is the plan holding state the list does not have.
+    /// A release takes the holder back and leaves everything else as it was: the
+    /// stranded reclaim and the salvage sweep write it, because a holder that can
+    /// never come back should not keep its row.
     #[test]
-    fn a_claim_and_a_release_move_the_holder_on_the_row() {
+    fn a_release_frees_the_row() {
         let repo = scratch_repo("row-holder");
         let row = TaskItem {
             id: "t1".to_string(),
             content: "work".to_string(),
             note: Some("kept".to_string()),
+            assigned_to: Some("worker".to_string()),
             ..Default::default()
         };
         save_tasks(Some(&repo), "me", &[row]).expect("write the work list");
 
-        claim_row_on_disk(Some(&repo), "me", "t1", "worker").expect("claim");
-        let claimed = load_tasks(Some(&repo), "me").expect("read");
-        assert_eq!(claimed[0].assigned_to.as_deref(), Some("worker"));
-        assert_eq!(
-            claimed[0].note.as_deref(),
-            Some("kept"),
-            "a claim moves the holder and nothing else"
-        );
-
-        release_row_on_disk(Some(&repo), "me", "t1").expect("release");
+        let released = release_row_on_disk(Some(&repo), "me", "t1").expect("release");
+        assert_eq!(released.assigned_to, None);
+        assert_eq!(released.note.as_deref(), Some("kept"), "nothing else moved");
         assert_eq!(
             load_tasks(Some(&repo), "me").expect("read")[0].assigned_to,
             None
-        );
-
-        let err = claim_row_on_disk(Some(&repo), "me", "gone", "worker").unwrap_err();
-        assert!(
-            err.to_string().contains("no task \"gone\""),
-            "unexpected error: {err}"
         );
 
         let _ = std::fs::remove_dir_all(&repo);
@@ -810,6 +686,7 @@ mod tests {
 
         close_row(
             &mut rows,
+            "me",
             "t2",
             "cargo test -p kcode-base: 7 passed",
             Some(serde_json::json!({"findings": "the store owns it", "confidence": "high"})),
@@ -833,7 +710,7 @@ mod tests {
             assigned_to: Some("me".to_string()),
             ..Default::default()
         }];
-        close_row(&mut rows, "t1", "done: nothing to run", None).expect("close");
+        close_row(&mut rows, "me", "t1", "done: nothing to run", None).expect("close");
         assert!(rows.is_empty());
     }
 
@@ -854,9 +731,9 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let err = close_row(&mut rows, "t1", "done", None).unwrap_err();
+        let err = close_row(&mut rows, "me", "t1", "done", None).unwrap_err();
         assert!(err.to_string().contains("still has open children"), "{err}");
-        let err = close_row(&mut rows, "t2", "   ", None).unwrap_err();
+        let err = close_row(&mut rows, "me", "t2", "   ", None).unwrap_err();
         assert!(err.to_string().contains("close needs result"), "{err}");
         assert_eq!(rows.len(), 2, "a refused close writes nothing");
     }
