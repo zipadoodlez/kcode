@@ -9,23 +9,22 @@ or tell an agent to run it, after a major change and before committing.
 ## The gate
 
 ```sh
-scripts/gate.sh                             # the boundary: gate + full suite, once per tree
-scripts/check_guardrails.sh                 # the gate alone, non-zero on failure
+scripts/gate.sh                             # the boundary: the guardrails + the full suite, once per tree
+scripts/check_guardrails.sh                 # the guardrails alone, non-zero on failure
 scripts/check_guardrails.sh --fix           # rustfmt + rebaseline ratchets
 scripts/check_guardrails.sh --skip-slow     # skip cargo clippy
 scripts/check_guardrails.sh --all-features  # add the release-only feature
 ```
 
 `scripts/gate.sh` is the boundary and must pass before a push:
-`.githooks/pre-push` runs it, and it is stamped by tree hash, so many commits cost
-one run. It is not a per-commit tax: a change that cannot affect the build (docs,
-comments, markdown) needs none of it, and a small Rust change can be checked
-narrowly first with `cargo fmt --all --check`, the ratchet covering what it
-touched, and `cargo clippy -p <crate> --all-targets -- -D warnings`. Do not run a
-separate `cargo check`: clippy builds every target, and switching between profiles
-rebuilds the tree (`testing.md`).
+`.githooks/pre-push` runs it, and it is stamped by tree hash under
+`~/.kcode/logs/gate-stamps`, so many commits cost one run and an unchanged tree is
+never checked twice. It is not a per-commit tax: a change that cannot affect the
+build (docs, comments, markdown) needs none of it, and a small Rust change can be
+checked narrowly first (`testing.md`). Bypass with `git push --no-verify` when
+there is a reason.
 
-The gate runs the old CI guardrail set locally: `cargo fmt --check`, `cargo clippy
+`check_guardrails.sh` runs the old CI set locally: `cargo fmt --check`, `cargo clippy
 -- -D warnings` (which also compiles every target, on default features),
 `Cargo.lock` freshness, the wildcard and `App`-shape ratchets, crate dependency
 boundaries, and the `dev_cargo` wrapper's own tests. The two size ratchets are
@@ -34,12 +33,12 @@ extra is `linux-compat-vendored-openssl` for the CentOS 7 release image.
 
 A compile or clippy failure is a real regression; do not commit past it.
 
-Compiling is not running. The gate builds every target but executes no test, so
-a test-only breakage passes it; run the suite (`testing.md`) before calling a
-landing done.
+Compiling is not running. `check_guardrails.sh` builds every target but executes
+no test, so a test-only breakage passes it; the boundary runs the suite on top
+(`testing.md`), and a landing is not done until it does.
 
 Clippy results are cached per crate, and `-- -D warnings` is not part of the
-cache key, so a passing gate can hide lints in any crate that did not recompile.
+cache key, so a passing run can hide lints in any crate that did not recompile.
 For a change that spans several crates, or that is clearing lints, that makes
 the pass meaningless: run `cargo clean` once and then the full gate, and expect
 it to surface pre-existing lints in the crates you touched. Fix them in one
@@ -71,9 +70,8 @@ excluded from text diffs and union-merged on conflict (see `.gitattributes`).
 
 ## Tests
 
-Tests are not part of the gate. Run `scripts/test.sh` and see
-[testing.md](testing.md) for the modes, the failure classes, and the baselines.
-Check a suspect in isolation before blaming it.
+Run `scripts/test.sh` and see [testing.md](testing.md) for the modes, the failure
+classes, and the baselines. Check a suspect in isolation before blaming it.
 
 ## Budget ratchets
 

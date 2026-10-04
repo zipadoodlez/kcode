@@ -106,6 +106,14 @@ assigned, the loop picks it, and the only thing an offer would add is a second
 in-memory copy of the list. Stored nowhere, read in the one place the next turn is
 decided, which is the loop.
 
+A member's session outlives its turn on purpose (decided 2026-10-04): a transcript, about
+9 KB in the first fan-out run, buys the next row without a spawn plus the member's own
+memory of the last one. Ending a member as soon as it holds no open row was declined,
+since it would pay a fresh spawn on every second row for a saving that small, and forking
+the summoner's history into a child was declined too, since a fresh member already shares
+the cached prefix and a fork would carry the summoner's wrong turns for the child's whole
+life.
+
 Having a human is derived from live state that already exists, a client attached to
 the session, and it is read in exactly one place, the loop's decision about who
 supplies the next turn. Stored nowhere, and read anywhere else, it becomes the mode
@@ -166,9 +174,10 @@ the type disagree today, the type is behind: `TaskItem` still carries `status`,
 
 1. **One file per repo**, `tasks.jsonl` at the root, found from git so a session in
    `crates/foo` reads the same list; outside a repo, a session scratch location.
-2. **The tool is the only writer.** It owns the write protocol and re-reads the file
-   before each write, so a human edit is an input, not a conflict. A claim rides the
-   work's commit.
+2. **One writer: the store's read-modify-write.** `kcode-base`'s `todo` store owns the
+   write protocol and re-reads the file before every write, so a human edit is an input,
+   not a conflict; the `todo` tool and the loop's anchor adoption are its callers. A
+   claim rides the work's commit.
 3. **One close action, with a nonempty result.** A parent's result is its children
    integrated, a leaf's is its own work, and a parent's row cannot go while a child
    names it.
@@ -288,6 +297,26 @@ where the run state is already in hand. A ready row nobody holds wakes nobody: t
 only what the session holds, so the run's dispatch is what assigns it, and the assign is the
 write that wakes. Everything else in this stage is deletion.
 
+Two more facts the first fan-out run found unkept (2026-10-04), both in the pick and the
+seed and both rows of this stage:
+
+- **The pick refuses a row with no `kind`** (rule 8). `next_held_ready_row`'s `ready`
+ predicate (`live_turn.rs:249`) and `row_is_ready` (`:271`) never read `kind`, and the
+ tool writes a row with none (`tool/todo.rs:73`), so the loop hands over a row whose
+ result requirements are unknown. The clause goes in the pick, not the write: the kind
+ typed later is the intended recovery.
+- **The seed carries the kind.** `row_turn_message` (`live_turn.rs:299`) sends the id,
+ the content and the note; the model's payload is the row's own words plus the kind, and
+ the worker reads the kind from nowhere else.
+
+One more leftover of this stage's own deletions, landed 2026-10-04: `close_row_on_disk`,
+`claim_row_on_disk` and `expand_row_on_disk` had no caller since S1c deleted the plan engine
+and the DAG. All three went, and the one rule `close_row_on_disk` still held, that a run
+closes only a row that names nobody or names it, moved into `close_row` itself, where every
+close already passes, so one check covers the user's session and every member. Taking a row
+is a write, so the user's session keeps its power to close anything. `MAX_PLAN_ITEMS` went
+with them, its last user gone.
+
 Order inside the stage: the hook and the loop's dispatch land and are proven by the hand
 fan-out first, and only then do the deletions follow. This is the plan's own rule applied
 within the stage, and it is the one place it matters most: a deletion program whose
@@ -396,6 +425,22 @@ instead. S1 strands the three producers that write the form; their shape is this
 (`bridge::upstream_context`), so the file had no reference left. What S4 still owns is the
 tool's `close_artifact` and the engine's writers, and the record's shape.
 
+Decided 2026-10-04: the record stays `{id, result}`, the close's own words, and the
+question does not survive with them. A child's `content` goes when its row does, on the
+model's own ground that nothing durable needs the plan, and the reader who would miss it
+does not exist: the integrator wrote the children's rows, a resumed run works the open
+ones, and only a model ever reads a record, since records are neither rendered in the TUI
+nor a wire field. Measured on the first fan-out run's anchor, two children cost 460 bytes,
+about 115 tokens, of which the artifact is 176 bytes and the store reads none of it, so
+this stage's cut halves the record. The close instruction carries the discipline instead.
+
+A note is for a row that stays open, so a close ignores one: the tool's `close` arm passes
+only the result and the artifact (`tool/todo.rs:114`), and the record on the parent holds
+`{id, result, artifact}`. The schema nonetheless offers `note` on every action, so a model
+can spend the field on a close and get no error, which the first fan-out run's `hatchling`
+did. A clause on the schema's `note` description saying that a close carries its words in
+the result is the whole fix.
+
 surface: −1 type, −7 fields, −3 producers, −2 tool vocabularies. lines ~−300. risk: med.
 
 ### S5. The file's fields
@@ -448,21 +493,28 @@ client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 24
   root, the `todo` tool's actions, and the close's required result are described only in
   this plan, which is a design rather than a manual. It waits until the list settles,
   which is worth writing once: the row gains its `kind` at 0.3, and S5's field cuts land
-  before the shape stops moving.
+  before the shape stops moving. The model's half of the same fact rides the tool
+  description, since rule 1 says where the list lives and nothing the model reads says
+  it: the first fan-out run's root ran `find /` and read a sibling repo's list before it
+  found its own (2026-10-04).
 
-### The bound (decide)
+### The bound (decided 2026-10-04)
 
-Today two limits protect the machine: the hard constant `MAX_SWARM_MEMBERS = 1000` live
-members per swarm, and a soft live-worker budget (`agents.swarm_max_concurrent_agents`,
-32 by default) that the spawn path and `run_plan` both consult. `run_plan` adds its own
-recovery dance when the cap is hit (free finished workers, retry, reuse-only, give up).
+One limit, the configurable one: `agents.swarm_max_concurrent_agents`, 32 by default and 0
+to switch it off, counting the live members that consume swarm capacity, read in the one
+place a member is created, the spawn admission (`comm_session.rs`). The hard constant
+`MAX_SWARM_MEMBERS = 1000` goes with it. The comment on the surviving check records that
+nested agents could grow to the hard cap and exhaust RAM, so the constant is not what saves
+a machine; it is a second check, a second message, a second counter and two tests for a
+number that never fires, and the config key is already the escape when a run legitimately
+owns more rows than the default.
 
-The proposal: exactly one software limit, an admission cap read where a spawn or a wake is
-admitted (constant as the hard stop, config for the soft number), nothing on a row,
-nothing in a grant. A run's work bound stays what it already is: no ready row ends it.
-The recovery dance disappears, because the loop does not spawn past the cap. The
-credential-wave breaker becomes a provider-health signal that fails a turn with a clear
-error, not a dispatcher rule.
+Two things the limit deliberately does not do. It does not end idle holder members, which
+is the member lifetime in the model above, and it is not read at a wake: a wake creates no
+member, so a check there would guard nothing. The other two clauses this section used to
+carry are already satisfied by S1: `run_plan` and its recovery dance went with the driver
+in S1b, and the credential-wave breaker was one of its policies, so
+`docs/what-was-removed.md` already names both.
 
 ### What to verify when the list is done
 

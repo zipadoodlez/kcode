@@ -20,32 +20,23 @@ but prefer the script so a run matches how the suites are meant to be exercised.
 for this repository (from the same log the wrapper writes) and whether this tree
 still matches the one it ran on, so you can decide whether a rerun is worth it.
 
-## The boundary
-
-`scripts/gate.sh` is the expensive tier: `check_guardrails.sh --all-features`
-(the default-feature gate plus the release-only feature) and `test.sh full`. It
-runs once per tree, not once per change, and stamps the tree hash (HEAD plus
-`git status --porcelain`) under `${KCODE_HOME:-~/.kcode}/logs/gate-stamps/`, so a
-re-run on an unchanged tree is skipped. `.githooks/pre-push` triggers it on a
-push, and a step landing may run it by hand; both are the same boundary. Bypass
-with `git push --no-verify` when there is a reason.
-
-`check_guardrails.sh` lints default features on its own; `--all-features` adds
-`linux-compat-vendored-openssl`, which exists only for the CentOS 7 release
-image, so the boundary takes it and iteration does not.
+The expensive tier that wraps these suites with the guardrails is
+`scripts/gate.sh`; its policy (the stamp, `pre-push`, when to run it) is in
+[post-change.md](post-change.md).
 
 ## Profiles: build each one once
 
 `cargo check`, `cargo clippy` and `cargo test` build different profiles, so
 alternating them rebuilds the tree. The commands that cover a change are:
 
-- `cargo clippy -p <crate> --all-targets --all-features -- -D warnings` while
-  iterating, because clippy compiles every target (a separate `cargo check` adds
-  a second, mostly redundant compile);
+- `cargo fmt --all --check`, the ratchet covering what it touched, and
+  `cargo clippy -p <crate> --all-targets -- -D warnings` while iterating, because
+  clippy compiles every target (a separate `cargo check` adds a second, mostly
+  redundant compile);
 - `scripts/test.sh` to run tests, which uses one profile for the whole run.
 
-Avoid `cargo check` before the gate for this reason; the gate's clippy already
-covers the compile errors it would find.
+Avoid `cargo check` before `check_guardrails.sh` for this reason; its clippy
+already covers the compile errors `cargo check` would find.
 
 `full` runs the root package's lib and bins plus the `provider_matrix` and `e2e`
 suites. It does not run a workspace crate's own unit tests, so a change inside
@@ -59,9 +50,8 @@ meant to be lived in gets them looked at once. Keep the list short: an item not 
 five seconds of looking is an item that will be skipped, and one that proved a landed
 piece is dropped once it has.
 
-- Open a TUI on the build, no install needed (`./target/selfdev/kcode --socket <path>`
-  serves its own daemon), and read `/info` against what the session holds: model,
-  effort level, provider.
+- Open a TUI on the build, no install needed (`./target/selfdev/kcode --socket <path>`),
+  and read `/info` against what the session holds: model, effort level, provider.
 - Set a level (`/effort high`), quit, `--resume`, and read `/info` again. This is the
   hop no test crosses: a request that reaches the provider but never persists looks
   identical to one that worked.

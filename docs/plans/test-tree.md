@@ -102,3 +102,11 @@ through `create_test_app`. The two diagnoses are independent of everything.
  Measured by `scripts/test.sh full` passing green at the default thread count
  on a clean environment, and by its wall time (2026-10-04: 5,367 test functions
  across 519 files, run on one core today).
+- [ ] **The loop's dispatch has no test.** `wake_ready_owners` (`live_turn.rs:374`),
+ `next_held_ready_row` (`:249`) and `row_turn_message` (`:299`) are exercised only by the
+ by-hand fan-out. S1 deleted 26 test files with the code they covered (the assign, await
+ and dag suites), which is right for deleted behavior, and left the replacement untested.
+ One `#[tokio::test]`: seed two headless members on the spawn edge, write one ready row
+ each, assert each woken member runs its own row's turn, close both, and assert the run
+ ends with the anchor the last row to close. Measured by the wake firing on the write with
+ no verb, and by the run's member sessions being gone when the anchor closes.
