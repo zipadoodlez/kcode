@@ -358,6 +358,23 @@ file that set `swarm_gallery_max_pct` or `swarm_strip_layout` has that line igno
 `chrono` and `kcode-tui-style` leave `kcode-tui-render`'s dependencies, since only the
 gallery used them.
 
+**The member todo cache goes, and the roster's last rule with it** (S3, 2026-10-04). The
+third copy of a session's rows lived on the swarm member: `TodoUpdated` was folded by
+`compact_todo_items` into `SwarmMember.todo_items`, tool activity and batch progress were
+nested under the active entry as `tool_intents`, and the result crossed the wire on
+`SwarmMemberStatus` for the roster's per-agent list. The roster went with S2, so the cache
+fed nothing: its wire fields had no client reader, and the only remaining consumers were
+the debug sample builder and test fixtures. All of it goes, with the caps that bounded it
+and the four dispatchers and helpers that filled it. What is lost: a coordinator can no
+longer read, from the member snapshot, which todo entry a worker is on or which tool it is
+running. It reads that on the pinned list instead, through the row the worker holds, and
+the "which tool is this worker running" display has no reader at all today, so it goes
+rather than moving onto the member status as S3's plan first said. The liveness rule is
+unchanged and lives in one place: a holder the run still has keeps its rows until the
+sweep frees them, and the grace that covers reload recovery stays. The `braid` comment
+asking to unify that rule with a dispatch-time predicate was already satisfied, because S1
+removed the second predicate's site, so the comment went with the rule now stated once.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

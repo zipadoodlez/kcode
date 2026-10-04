@@ -208,18 +208,18 @@ the type disagree today, the type is behind: `TaskItem` still carries `status`,
 
 ## The duplication this removes
 
-Measured 2026-10-03, all bodies read, and re-read after S1 landed. S1 removed the
-dispatch duplication (four schedulers, two dispatchers, two waiters, two disagreeing
-liveness predicates), the three artifact producers with the report action, and the
-channel index with the shared-context store; those cuts are recorded in
-`docs/what-was-removed.md`. What remains:
+Measured 2026-10-03, all bodies read, re-read after S1 landed, then after S2's deadwood
+(t31) and S3 (t34). S1 removed the dispatch duplication, the three artifact producers with
+the report action, and the channel index with the shared-context store; S2 and S3 removed
+the four list surfaces, the roster, the 3,100-line gallery renderer, and the member todo
+cache with its wire fields. Those cuts are recorded in `docs/what-was-removed.md`. What
+remains:
 
-- **A third copy of a session's rows** (`SwarmMemberRuntime.todo_items`, folded from
-  `TodoEvent`s), **four member shapes**, **a third event log** (the bounded swarm
-  history), 607 lines of debug views, and a 3,100-line gallery rendering the same
-  swarm state.
-- **Four status vocabularies**, and the three fields the file does not need
-  (`status`, `priority`, `group`).
+- **The three fields the file does not need** (`status`, `priority`, `group`) with the
+  status vocabularies they keep alive.
+- **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to ~40
+  functions, with the swarm event history threaded beside it.
+- **607 lines of debug views**, which no step in this lane claims.
 - **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to
   ~40 functions.
 
@@ -230,32 +230,16 @@ The tool's action surface is now four actions (spawn, stop, list_models, message
 Every step lands whole, proven by the gate. The one `kcode run` probe against its own
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
 Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opened
-the client's path and S3-S5 delete what it left behind. S2 landed 2026-10-04. The numbers
-label the stages, they are not an order: S5 waits on S3 (measured 2026-10-04), because
-removing `TaskItem.status` strands
-`dispatch_swarm_todo_progress`/`compact_todo_items` and `SwarmMemberRuntime.todo_items`,
-which is S3's deletion. D2 waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
-droppable: nothing here depends on it.
+the client's path and S3-S5 delete what it left behind. S2 landed 2026-10-04, S3 on the
+same day. The numbers label the stages, they are not an order: S5 waited on S3 because
+removing `TaskItem.status` would have stranded the member todo cache, which S3a deleted,
+so S5 is next. D2 waits on nothing. The `app.rs` re-core (`plans/app-shape.md`) is the
+tail and it is droppable: nothing here depends on it.
 
-### S3. One status
+### The live check for S2 and S3 (row t30)
 
-Liveness derives from the holder's own session status plus the rule that a holder who can
-never return releases its rows, through one `assignee_is_dead` used by both the sweep
-(`held_row_ids`) and dispatch (`server/swarm.rs:616`), where a comment already asks for
-the union. The two paths must agree: a holder whose session status is dead for longer than
-the salvage grace releases its rows, and dispatch must not wait on it.
-
-S3a landed 2026-10-04: the member todo cache went, with its wire fields and the
-`tool_intents` display, which had no reader after the roster left. The three remaining
-member shapes (the server's live `SwarmMember`, the wire's `SwarmMemberStatus`, and the
-durable `SwarmMemberRecord`) stay: each has a different lifetime, and collapsing them is
-not sized here.
-
-surface: −2 liveness predicates. lines ~−30. risk: med.
-
-**Live check (row t30), run with S2's surface after S3 lands.** Build
-`scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo
-with a `tasks.jsonl`:
+Build `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch
+repo with a `tasks.jsonl`:
 
 1. Add rows with the `todo` tool: two root rows, one child naming a root as `parent`, and
    one row blocked by another. The pinned list at the top should show `<id> <words>` per
