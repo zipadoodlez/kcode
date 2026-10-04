@@ -15,7 +15,7 @@
 
 use super::client_lifecycle::process_locked_message_streaming_mpsc;
 use super::{
-    RunState, SessionAgents, SwarmEvent, SwarmMember, session_event_fanout_sender, truncate_detail,
+    SessionAgents, SwarmEvent, SwarmMember, session_event_fanout_sender, truncate_detail,
     update_member_status,
 };
 use crate::agent::Agent;
@@ -372,9 +372,7 @@ pub(super) async fn continue_with_next_row(
 /// The write is the only thing that starts work. The verbs that used to poke a worker
 /// are gone, so a row that becomes ready wakes the session that owes it, and the turn
 /// that follows carries the row's own words (`next_row_turn`). Only a headless member
-/// is woken: a session with a human owns its own turns (rule 11). A row the run's own
-/// map already carries a status for is work it took, so a row left open does not
-/// restart the run that left it.
+/// is woken: a session with a human owns its own turns (rule 11).
 ///
 /// A ready row *nobody* holds wakes nobody: the pick takes only what the session
 /// holds, so the model's other half ("held by me or nobody") is the loop's dispatch,
@@ -386,11 +384,9 @@ pub(super) async fn wake_ready_owners(
     rows: &[TaskItem],
     sessions: &SessionAgents,
     swarm: LiveTurnSwarmContext,
-    runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> usize {
     let mut owners: Vec<String> = {
         let members = swarm.members.read().await;
-        let runs = runs.read().await;
         rows.iter()
             .filter(|row| row_is_ready(rows, row))
             .filter_map(|row| {
@@ -399,15 +395,6 @@ pub(super) async fn wake_ready_owners(
                     .map(|owner| (owner, row.id.as_str()))
             })
             .filter(|(owner, _)| members.get(*owner).is_some_and(|member| member.is_headless))
-            .filter(
-                |(owner, row_id)| match super::swarm::swarm_root(&members, owner) {
-                    Some(root) => runs
-                        .get(&root)
-                        .and_then(|run| run.get(*row_id))
-                        .is_none_or(|state| state.status.is_empty()),
-                    None => true,
-                },
-            )
             .map(|(owner, _)| owner.to_string())
             .collect()
     };

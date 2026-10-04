@@ -115,10 +115,6 @@ pub(super) async fn broadcast_todos(swarm_members: &Arc<RwLock<HashMap<String, S
     }
 }
 
-/// The run's lifecycle for one row, in the run's own map.
-pub(super) fn set_run_status(run: &mut RunState, id: &str, status: &str) {
-    run.entry(id.to_string()).or_default().status = status.to_string();
-}
 use super::persist_swarm_state_for;
 use crate::agent::Agent;
 use crate::plan::TaskItem;
@@ -435,25 +431,18 @@ impl DeadMemberSalvage {
     }
 }
 
-/// Every non-terminal plan item assigned to `session_id`, back to `queued`.
+/// Every plan item assigned to `session_id`, so a dead holder stops naming them.
 ///
 /// This is the eager counterpart to the assign-time stranded-row reclaim: a worker
-/// that crashes, stops, or leaves the swarm mid-task leaves its rows `running`/
-/// `queued` and assigned to a corpse, where nothing picks them and a driving
-/// `run_plan` stalls into its transient-stall error. Salvaging at the moment the
-/// member dies converts that silent strand into work the list offers again. The
-/// claim is released in the list by the caller; nothing counts attempts, because
-/// the bound belongs to the loop that repeats the work.
-fn held_row_ids(rows: &[TaskItem], run: &RunState, session_id: &str) -> Vec<String> {
+/// that crashes, stops, or leaves the swarm mid-task leaves its rows assigned to a
+/// corpse, where nothing picks them. Salvaging at the moment the member dies
+/// converts that silent strand into work the list offers again. The claim is
+/// released in the list by the caller; nothing counts attempts, because the bound
+/// belongs to the loop that repeats the work.
+fn held_row_ids(rows: &[TaskItem], session_id: &str) -> Vec<String> {
     rows.iter()
         .filter(|row| row.assigned_to.as_deref() == Some(session_id))
         .map(|row| row.id.clone())
-        .filter(|id| {
-            // Only the run's own map speaks for a row it has tracked; a row it
-            // has not is still this holder's.
-            run.get(id)
-                .is_none_or(|state| !crate::plan::is_terminal_status(&state.status))
-        })
         .collect()
 }
 
@@ -468,15 +457,8 @@ pub(super) async fn salvage_assignments_of_dead_member(
     swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
 ) -> DeadMemberSalvage {
     let rows = swarm_rows(swarm_id, session_id, swarm_members).await;
-    let outcome = {
-        let mut runs = swarm_runs.write().await;
-        let run = runs.entry(swarm_id.to_string()).or_default();
-        let mut outcome = DeadMemberSalvage::default();
-        for task_id in held_row_ids(&rows, run, session_id) {
-            set_run_status(run, &task_id, "queued");
-            outcome.released_task_ids.push(task_id);
-        }
-        outcome
+    let outcome = DeadMemberSalvage {
+        released_task_ids: held_row_ids(&rows, session_id),
     };
     if outcome.is_empty() {
         return outcome;
@@ -1845,26 +1827,13 @@ mod tests {
         Arc::new(RwLock::new(HashMap::<String, RunState>::new()))
     }
 
-    /// The row's status as the run sees it: the run's own entry when it set one, and
-    /// the list's row otherwise. The holder is the row's, read from the list.
-    async fn salvage_state(
-        swarm_runs: &Arc<RwLock<HashMap<String, RunState>>>,
-        swarm_id: &str,
-        repo: &std::path::Path,
-        row_id: &str,
-    ) -> (Option<String>, Option<String>) {
-        let run_status = swarm_runs
-            .read()
-            .await
-            .get(swarm_id)
-            .and_then(|run| run.get(row_id))
-            .map(|state| state.status.clone());
-        let holder = crate::todo::load_tasks(Some(repo), "worker")
+    /// The row's holder, read from the list: `None` once salvage releases it.
+    fn row_holder(repo: &std::path::Path, row_id: &str) -> Option<String> {
+        crate::todo::load_tasks(Some(repo), "worker")
             .expect("read the list")
             .into_iter()
             .find(|row| row.id == row_id)
-            .and_then(|row| row.assigned_to);
-        (run_status, holder)
+            .and_then(|row| row.assigned_to)
     }
 
     #[tokio::test]
@@ -1884,9 +1853,11 @@ mod tests {
             salvage_assignments_of_dead_member("worker", "coord", &swarm_members, &swarm_runs)
                 .await;
 
-        let (status, holder) = salvage_state(&swarm_runs, "coord", repo.path(), "task-1").await;
-        assert_eq!(status.as_deref(), Some("queued"), "the row is work again");
-        assert_eq!(holder, None, "and the claim is released in the list");
+        assert_eq!(
+            row_holder(repo.path(), "task-1"),
+            None,
+            "the claim is released in the list"
+        );
 
         let coord_events: Vec<_> = std::iter::from_fn(|| coord_rx.try_recv().ok()).collect();
         assert!(
@@ -1914,9 +1885,11 @@ mod tests {
 
         remove_session_from_swarm("worker", "coord", &swarm_members, &swarm_runs).await;
 
-        let (status, holder) = salvage_state(&swarm_runs, "coord", repo.path(), "task-1").await;
-        assert_eq!(status.as_deref(), Some("queued"), "the row is work again");
-        assert_eq!(holder, None, "and the claim is released in the list");
+        assert_eq!(
+            row_holder(repo.path(), "task-1"),
+            None,
+            "the claim is released in the list"
+        );
     }
 
     #[tokio::test]
@@ -1935,9 +1908,11 @@ mod tests {
 
         salvage_dead_assignees(&swarm_members, &swarm_runs).await;
 
-        let (status, holder) = salvage_state(&swarm_runs, "coord", repo.path(), "task-1").await;
-        assert_eq!(status.as_deref(), Some("queued"), "the row is work again");
-        assert_eq!(holder, None, "and the claim is released in the list");
+        assert_eq!(
+            row_holder(repo.path(), "task-1"),
+            None,
+            "the claim is released in the list"
+        );
     }
 
     #[tokio::test]
@@ -1960,13 +1935,11 @@ mod tests {
 
         salvage_dead_assignees(&swarm_members, &swarm_runs).await;
 
-        let (status, holder) =
-            salvage_state(&swarm_runs, "grace-worker", repo.path(), "task-1").await;
         assert_eq!(
-            status, None,
+            row_holder(repo.path(), "task-1").as_deref(),
+            Some("grace-worker"),
             "a live holder keeps the row as the list has it"
         );
-        assert_eq!(holder.as_deref(), Some("grace-worker"));
     }
 
     #[tokio::test]

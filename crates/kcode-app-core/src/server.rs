@@ -2048,7 +2048,6 @@ impl Server {
                             &event_counter,
                             &swarm_event_tx,
                         ),
-                        &swarm_runs,
                     )
                     .await;
                     Self::end_spent_runs(
