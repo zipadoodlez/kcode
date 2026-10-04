@@ -407,7 +407,8 @@ impl App {
             return None;
         }
 
-        let spawns_agents = tool.input.get("action").and_then(|value| value.as_str()) == Some("spawn");
+        let spawns_agents =
+            tool.input.get("action").and_then(|value| value.as_str()) == Some("spawn");
 
         spawns_agents.then_some("swarm_spawn")
     }

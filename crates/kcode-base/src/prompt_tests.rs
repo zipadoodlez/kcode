@@ -276,7 +276,10 @@ fn test_session_context_includes_time_timezone_and_system_info() {
         .lines()
         .find(|line| line.starts_with("Kcode version: "))
         .expect("version line");
-    assert_eq!(version_line.matches(kcode_build_meta::git_hash()).count(), 1);
+    assert_eq!(
+        version_line.matches(kcode_build_meta::git_hash()).count(),
+        1
+    );
     assert!(!context.contains("Working directory: "));
     assert!(!context.contains("Git:"));
 }
