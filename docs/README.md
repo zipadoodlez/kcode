@@ -60,6 +60,8 @@ not fit its row is a doc in the wrong place.
 | `plans/server-shape.md` | the request path's shape | the `handle_client` split (H1-H5) and the `communicate.rs` condense |
 | `plans/test-tree.md` | the test tree | its reshape tasks, and the tests red on a clean tree |
 | `plans/hygiene.md` | the loose ends | config warnings, hook observability, palette and clock consistency, tool-description cost, the crate spine, and the two process calls |
+| `plans/provider-refactor.md` | the provider tier's shape | the eight-sweep audit's ranked cuts (wires, core, base, auth, TUI, CLI, consumers), the four-noun target, the malleability gate |
+| `plans/flow-tidy.md` | the worker's handback | the close's cap, the long form's home, the batch error, and the two calls |
 | `plans/browser-provider-protocol.md` | a design for work not yet built | the protocol, and the one call to build it; not served to the model |
 | `user/cli.md` | the non-interactive surface | flags a wrapper needs and their traps |
 | `user/tui.md` | terminal input, picker, panels | input mechanics and their terminal quirks |

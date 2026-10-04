@@ -6,18 +6,6 @@ spine is the one structural item; the two calls are the maintainer's.
 
 ## Tasks
 
-- [ ] **The provider dispatch fan-out.** `kcode-base/src/provider/mod.rs` (2,858
- lines) re-matches `self.active_provider()` 24 times (28 `ActiveProvider::Claude`
- arms) across the `Provider` impl's 43 methods. One dispatch seam (a slot lookup or
- a macro) removes the repeated 8-arm matches. The arms differ in failover and catalog
- behavior, so verify with the provider suites. (A1, 2026-10-03.)
-- [ ] **(decide) The provider tiers.** 61,824 lines in `crates/kcode-provider*` (src)
- plus `kcode-base/src/provider/*` (2,858 in `mod.rs` alone), `provider_catalog.rs` and
- `provider-metadata/catalog.rs`: three homes for one provider's identity and catalog
- (`provider-X` metadata, `provider-X-runtime` transport, the base and metadata tables),
- and `kcode-provider-bedrock` is referenced once from outside its crate. Decide which
- tier owns the catalog, then collapse. This is the repo's largest non-TUI surface and
- it is not the audit's safe tier. (A1.)
 - [x] **`tasks.bak` is the store's own backup, and it was tracked.** Landed
  2026-10-03: `storage::write_bytes` keeps the previous list as `<path>.bak` beside
  `tasks.jsonl` for crash recovery, so the file is derived state that reappears on
