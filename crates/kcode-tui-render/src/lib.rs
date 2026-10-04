@@ -1,7 +1,6 @@
 pub mod chrome;
 pub mod layout;
-pub mod swarm_gallery;
-pub mod swarm_tiles;
+pub mod status;
 
 use ratatui::prelude::{Line, Span, Style};
 
@@ -198,4 +197,31 @@ pub fn line_plain_text(line: &Line<'_>) -> String {
         .iter()
         .map(|span| span.content.as_ref())
         .collect::<String>()
+}
+
+/// Split `s` into chunks of at most `max_width` display cells.
+///
+/// Chunks break on display width, not bytes, so a wide glyph never straddles
+/// two lines. An empty input yields one empty chunk, never none.
+pub fn split_by_display_width(s: &str, max_width: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0usize;
+
+    for ch in s.chars() {
+        let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+        if current_width + cw > max_width && !current.is_empty() {
+            chunks.push(std::mem::take(&mut current));
+            current_width = 0;
+        }
+        current.push(ch);
+        current_width += cw;
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    if chunks.is_empty() {
+        chunks.push(String::new());
+    }
+    chunks
 }

@@ -1564,7 +1564,6 @@ async fn handle_remote_key_internal(
                     app.clear_live_usage_state();
                     // Full transcript discard: diagrams and side panel pages
                     app.swarm.plan_items.clear();
-                    app.swarm.plan_swarm_id = None;
                     super::super::commands_review::clear_side_panel_for_new_session(app);
                     app.is_processing = false;
                     app.status = ProcessingStatus::Idle;

@@ -99,8 +99,6 @@ pub(super) async fn send_todos_to_session(
     let event = ServerEvent::SwarmPlan {
         swarm_id: session_id.to_string(),
         items,
-        reason: None,
-        summary: None,
     };
     fanout_session_event(swarm_members, session_id, event).await;
 }

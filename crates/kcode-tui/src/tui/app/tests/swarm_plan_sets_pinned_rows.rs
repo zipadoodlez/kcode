@@ -1,5 +1,5 @@
 #[test]
-fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
+fn swarm_plan_event_sets_the_pinned_rows_without_a_transcript_message() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
@@ -20,23 +20,14 @@ fn swarm_plan_updates_state_without_adding_an_inline_diagram() {
         crate::protocol::ServerEvent::SwarmPlan {
             swarm_id: "test-swarm".to_string(),
             items: vec![item.clone()],
-            reason: None,
-            summary: None,
         },
         &mut remote,
     );
 
-    assert_eq!(app.swarm.plan_swarm_id.as_deref(), Some("test-swarm"));
     assert_eq!(app.swarm.plan_items, vec![item]);
     assert_eq!(
         app.display_messages().len(),
         message_count,
-        "plan updates should not add transcript messages"
+        "a rows push should not add transcript messages"
     );
-    assert!(app.display_messages().iter().all(|message| {
-        !message
-            .title
-            .as_deref()
-            .is_some_and(|title| title.starts_with("Plan graph · "))
-    }));
 }

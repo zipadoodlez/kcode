@@ -377,19 +377,6 @@ swarm_spawn_mode = "inline"
 # guard and leaves only the absolute per-swarm hard cap of 1000.
 # Env override: KCODE_SWARM_MAX_CONCURRENT_AGENTS
 swarm_max_concurrent_agents = 32
-#
-# Max percentage (1-90) of the chat height the inline swarm gallery band may use.
-# Unset = built-in default (40%). Lower values keep more transcript visible; set
-# near the minimum to collapse the gallery to a thin strip.
-# swarm_gallery_max_pct = 40
-#
-# Layout of the inline swarm strip above the status line:
-#   "vertical"   - one agent per row (session icon + status + task), capped to
-#                  a few rows with a "+N more" overflow marker (default)
-#   "horizontal" - all agents packed as chips on a single row
-# Env override: KCODE_SWARM_STRIP_LAYOUT
-# swarm_strip_layout = "vertical"
-#
 [terminal]
 # Without a hook, clients inside tmux automatically use a right-side pane.
 # Set KCODE_TERMINAL to force a supported terminal emulator instead.

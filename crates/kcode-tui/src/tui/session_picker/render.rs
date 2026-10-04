@@ -11,9 +11,7 @@ impl SessionPicker {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis()
-            .saturating_div(u128::from(
-                kcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAME_MS,
-            )) as usize
+            .saturating_div(u128::from(kcode_tui_render::status::SPINNER_FRAME_MS)) as usize
     }
 
     pub(super) fn crash_reason_line(session: &SessionInfo) -> Option<Line<'static>> {
@@ -225,8 +223,8 @@ impl SessionPicker {
                     None => "working".to_string(),
                 };
                 Some((
-                    kcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES[spinner_frame
-                        % kcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES.len()],
+                    kcode_tui_render::status::SPINNER_FRAMES
+                        [spinner_frame % kcode_tui_render::status::SPINNER_FRAMES.len()],
                     queued_color(),
                     label,
                 ))
@@ -430,8 +428,8 @@ impl SessionPicker {
         let server_color: Color = warning_color();
         let dim: Color = kcode_tui_style::theme::border_color();
         let spinner_frame = Self::running_spinner_frame();
-        let spinner = kcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES
-            [spinner_frame % kcode_tui_render::swarm_gallery::STRIP_SPINNER_FRAMES.len()];
+        let spinner = kcode_tui_render::status::SPINNER_FRAMES
+            [spinner_frame % kcode_tui_render::status::SPINNER_FRAMES.len()];
 
         let items: Vec<ListItem> = if let Some(message) = self.loading_message.as_deref() {
             vec![

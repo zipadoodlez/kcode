@@ -1,17 +1,12 @@
 //! App-side swarm UI state.
 
-/// The swarm the server reports on, mirrored for the inline panel: member
-/// snapshots, the latest plan, and the panel's selection. One home, so the
-/// panel and its `TuiState` accessors read one struct.
-///
-/// The panel navigation methods and the subtree filtering stay on `App`: they
-/// read config, session identity, and the transcript, so they are not this
-/// struct's to own.
+/// The swarm the server reports on: member status snapshots and the rows of the
+/// pinned work list. One home, so the list and its `TuiState` accessors read one
+/// struct.
 #[derive(Default)]
 pub(super) struct Swarm {
     /// Member status snapshots (remote mode only).
     pub(super) members: Vec<crate::protocol::SwarmMemberStatus>,
-    /// Latest swarm plan snapshot (local or remote server event stream).
+    /// The pinned work list's rows, as the server last pushed them.
     pub(super) plan_items: Vec<crate::plan::TaskItem>,
-    pub(super) plan_swarm_id: Option<String>,
 }

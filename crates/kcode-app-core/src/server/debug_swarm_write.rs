@@ -46,8 +46,6 @@ pub(super) async fn maybe_handle_swarm_write_command(
         let clear_event = ServerEvent::SwarmPlan {
             swarm_id: swarm_id.to_string(),
             items: Vec::new(),
-            reason: Some("plan_cleared".to_string()),
-            summary: None,
         };
         let session_ids = super::swarm::swarm_session_ids(swarm_id, ctx.swarm_members).await;
         {

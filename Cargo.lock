@@ -3422,8 +3422,6 @@ dependencies = [
 name = "kcode-tui-render"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "kcode-tui-style",
  "ratatui",
  "unicode-width",
 ]

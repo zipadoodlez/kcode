@@ -219,14 +219,6 @@ pub fn next_runnable_item_ids(items: &[TaskItem], limit: Option<usize>) -> Vec<S
     }
 }
 
-pub fn newly_ready_item_ids(before: &[TaskItem], after: &[TaskItem]) -> Vec<String> {
-    let before_ready: HashSet<String> =
-        summarize_plan_graph(before).ready_ids.into_iter().collect();
-    let mut after_ready = summarize_plan_graph(after).ready_ids;
-    after_ready.retain(|item_id| !before_ready.contains(item_id));
-    after_ready
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,22 +264,6 @@ mod tests {
             summary.unresolved_dependency_ids,
             vec!["missing-task".to_string()]
         );
-    }
-
-    #[test]
-    fn newly_ready_item_ids_reports_tasks_unblocked_by_completion() {
-        let before = vec![
-            item("setup", "running", &[]),
-            item("follow-up", "queued", &["setup"]),
-            item("later", "queued", &["follow-up"]),
-        ];
-        let after = vec![
-            item("setup", "completed", &[]),
-            item("follow-up", "queued", &["setup"]),
-            item("later", "queued", &["follow-up"]),
-        ];
-
-        assert_eq!(newly_ready_item_ids(&before, &after), vec!["follow-up"]);
     }
 
     #[test]

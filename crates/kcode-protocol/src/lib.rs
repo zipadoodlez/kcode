@@ -16,13 +16,12 @@ pub use notifications::{FeatureToggle, NotificationType};
 
 use kcode_message_types::BatchProgress;
 use kcode_message_types::{InputShellResult, ToolCall};
-use kcode_plan::{TaskItem, next_runnable_item_ids, summarize_plan_graph};
+use kcode_plan::TaskItem;
 pub use kcode_session_types::SwarmLifecycleStatus;
 pub use side_panel::{
     PersistedSidePanelPage, PersistedSidePanelState, SidePanelPage, SidePanelPageFormat,
     SidePanelPageSource, SidePanelSnapshot, snapshot_is_empty,
 };
-use std::collections::BTreeMap;
 
 #[path = "protocol_memory.rs"]
 mod memory_snapshots;
@@ -179,82 +178,6 @@ pub type ReloadRecoverySnapshot = ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::{Request, ServerEvent};
-
-/// Lightweight swarm plan graph summary for planner-friendly reads.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PlanGraphStatus {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub swarm_id: Option<String>,
-    pub item_count: usize,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub ready_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub blocked_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub active_ids: Vec<String>,
-    /// Terminal without completing: failed, stopped, or crashed items. A plan
-    /// whose run "finished" with entries here did not finish cleanly, so
-    /// schedulers and reports must surface these instead of reading the
-    /// terminal state as success.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub failed_ids: Vec<String>,
-    /// Failure reason per failed item id (the assignee member's last status
-    /// detail, e.g. "task failed: Anthropic API error (401 Unauthorized)"). Lets
-    /// `plan_status` and schedulers explain *why* a node failed (and classify
-    /// waves of credential failures) instead of only listing failed ids. Only
-    /// failed items whose assignee still has a detail appear.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub failed_reasons: BTreeMap<String, String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub cycle_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub unresolved_dependency_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub next_ready_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub newly_ready_ids: Vec<String>,
-}
-
-impl PlanGraphStatus {
-    pub fn empty_for_swarm(swarm_id: impl Into<String>) -> Self {
-        Self {
-            swarm_id: Some(swarm_id.into()),
-            item_count: 0,
-            ready_ids: Vec::new(),
-            blocked_ids: Vec::new(),
-            active_ids: Vec::new(),
-            failed_ids: Vec::new(),
-            failed_reasons: BTreeMap::new(),
-            cycle_ids: Vec::new(),
-            unresolved_dependency_ids: Vec::new(),
-            next_ready_ids: Vec::new(),
-            newly_ready_ids: Vec::new(),
-        }
-    }
-
-    pub fn from_rows(
-        swarm_id: impl Into<String>,
-        rows: &[TaskItem],
-        next_ready_limit: Option<usize>,
-        newly_ready_ids: Vec<String>,
-        failed_reasons: BTreeMap<String, String>,
-    ) -> Self {
-        let graph = summarize_plan_graph(rows);
-        Self {
-            swarm_id: Some(swarm_id.into()),
-            item_count: rows.len(),
-            ready_ids: graph.ready_ids,
-            blocked_ids: graph.blocked_ids,
-            active_ids: graph.active_ids,
-            failed_ids: graph.failed_ids,
-            failed_reasons,
-            cycle_ids: graph.cycle_ids,
-            unresolved_dependency_ids: graph.unresolved_dependency_ids,
-            next_ready_ids: next_runnable_item_ids(rows, next_ready_limit),
-            newly_ready_ids,
-        }
-    }
-}
 
 /// Swarm member status for lifecycle updates
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

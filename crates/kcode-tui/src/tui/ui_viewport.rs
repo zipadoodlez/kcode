@@ -1027,7 +1027,7 @@ fn parent_depth(rows: &[crate::plan::TaskItem], row: &crate::plan::TaskItem) -> 
 /// The holder named on a row, with the state the roster used to carry: its
 /// model and how long it has been on the row.
 fn holder_label(member: &crate::protocol::SwarmMemberStatus) -> String {
-    use kcode_tui_render::swarm_gallery::humanize_age;
+    use kcode_tui_render::status::humanize_age;
 
     let name = member
         .friendly_name
@@ -1055,7 +1055,7 @@ fn todo_row_line(
     spinner_frame: usize,
     width: u16,
 ) -> Line<'static> {
-    use kcode_tui_render::swarm_gallery::{is_active_status, status_glyph};
+    use kcode_tui_render::status::{is_active_status, spinner_glyph};
 
     let indent = parent_depth(rows, row);
     let holder = row.assigned_to.as_deref();
@@ -1066,7 +1066,7 @@ fn todo_row_line(
     let blocked = !row.blocked_by.is_empty();
 
     let (icon, icon_color) = if is_active_status(status) {
-        (status_glyph(status, spinner_frame), warning_color())
+        (spinner_glyph(spinner_frame), warning_color())
     } else if matches!(status, "failed" | "crashed" | "stopped") {
         ("✗", error_color())
     } else if blocked {

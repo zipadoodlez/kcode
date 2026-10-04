@@ -27,13 +27,6 @@ spine is the one structural item; the two calls are the maintainer's.
  `tasks.jsonl` for crash recovery, so the file is derived state that reappears on
  every list write (it showed up as a diff during A2), not a stale copy. Untracked
  and ignored. (A1.)
-- [ ] **The swarm gallery's render functions are now demo-only.** S2 removed every
- production TUI consumer of `kcode-tui-render/src/swarm_gallery.rs` (the adapter, the
- strip, the page and the dock), so `render_gallery`, the strip/dock/page renderers,
- `GalleryTodo`, `GalleryToolIntent` and `members_to_tiles` are called only by
- `examples/swarm_gallery_live.rs` and the fuzz test. Delete the renderer down to the
- helpers the pinned list uses (`is_active_status`, `status_glyph`, `status_accent`,
- `humanize_age`, the spinner constants), or say the demo is worth the file. (S2.)
 - [ ] **The crate spine.** `kcode-base` -> `kcode-app-core` -> `kcode-tui` -> root,
  with `pub use kcode_*::*` making every module path global, so no call site names its
  owning crate. `scripts/check_wildcard_reexport_budget.py` ratchets it (baseline 13,

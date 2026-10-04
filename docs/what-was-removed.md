@@ -337,6 +337,25 @@ are gone; an agent reads on the list through the row it holds, and the coordinat
 its state there. The work list's own vocabulary is unchanged: server-pushed rows,
 read-only in the client.
 
+**S2's leftovers go** (S2, 2026-10-04). The roster's renderer and the plan summary kept
+shapes nothing read any more. The gallery renderer goes whole: `swarm_gallery.rs` and
+`swarm_tiles.rs` in `kcode-tui-render` (3,735 lines: member tiles, chat cards, the strip,
+the page, the dock, the grid allocator and their buffer tests), the two examples that
+rendered it and the fuzz audit over it. The pinned list and the session picker keep the
+spinner cadence, `spinner_glyph`, `is_active_status` and `humanize_age`, which move to
+`kcode-tui-render/src/status.rs`, and the one live helper the grid file held
+(`split_by_display_width`) moves to the crate root. The plan summary goes with the
+producer S2 removed: `PlanGraphStatus` and its `from_rows`, the always-`None` `summary`
+and `reason` on the plan event, `kcode-plan`'s `newly_ready_item_ids`, and the client's
+`plan_swarm_id`, which was written and cleared but never read. The config for the deleted
+surfaces goes too: `agents.swarm_gallery_max_pct` and `agents.swarm_strip_layout` with
+its enum, `KCODE_SWARM_STRIP_LAYOUT` and its key listing. What is lost: a client no longer
+sees a "plan synced" notice or a ready/blocked/cycle breakdown, which the server last
+produced only for a debug plan-clear; there is no standalone gallery demo; and a config
+file that set `swarm_gallery_max_pct` or `swarm_strip_layout` has that line ignored.
+`chrono` and `kcode-tui-style` leave `kcode-tui-render`'s dependencies, since only the
+gallery used them.
+
 ## Deliberately kept from upstream
 
 - `/account` and `/accounts` - the multi-account picker for Claude and OpenAI.

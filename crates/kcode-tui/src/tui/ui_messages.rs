@@ -13,7 +13,7 @@ use crate::message::{
 };
 pub(super) use cache_support::get_cached_message_lines;
 use cache_support::{centered_wrap_width, left_pad_lines_for_centered_mode};
-use kcode_tui_render::swarm_tiles::split_by_display_width;
+use kcode_tui_render::split_by_display_width;
 use std::borrow::Cow;
 use unicode_width::UnicodeWidthStr;
 

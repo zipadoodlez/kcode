@@ -620,15 +620,11 @@ pub enum ServerEvent {
     #[serde(rename = "swarm_status")]
     SwarmStatus { members: Vec<SwarmMemberStatus> },
 
-    /// Full swarm plan snapshot for synchronization and UI rendering.
+    /// A session's work-list rows, pushed by the server on every write.
     #[serde(rename = "swarm_plan")]
     SwarmPlan {
         swarm_id: String,
         items: Vec<TaskItem>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        summary: Option<PlanGraphStatus>,
     },
 
     /// Soft interrupt message was injected at a safe point

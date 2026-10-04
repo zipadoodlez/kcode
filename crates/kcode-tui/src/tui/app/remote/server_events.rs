@@ -4,7 +4,6 @@ use crate::tui::TuiState;
 use crate::tui::app as app_mod;
 use crate::tui::app::pending_split::SplitPayload;
 use crate::tui::app::remote::input_dispatch::restore_pending_startup_prompt_echo;
-use crate::tui::app::remote::swarm_plan_core::RemoteSwarmPlanSnapshot;
 
 fn allow_runtime_identity_mismatch() -> bool {
     std::env::var_os("KCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
@@ -1525,7 +1524,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 app.remote_token_usage_totals = None;
                 app.swarm.members.clear();
                 app.swarm.plan_items.clear();
-                app.swarm.plan_swarm_id = None;
                 remote.reset_call_output_tokens_seen();
             }
             let model_catalog_snapshot = kcode_provider_core::ModelCatalogSnapshot::new(
@@ -1961,30 +1959,11 @@ pub(in crate::tui::app) fn handle_server_event(
             // or tool-progress updates.
             true
         }
-        ServerEvent::SwarmPlan {
-            swarm_id,
-            items,
-            reason,
-            summary,
-            ..
-        } => {
-            // The server sends a plan event from inside the lock that mutated the
-            // plan, so the events arrive in mutation order and nothing here has to
-            // drop a stale one.
-            let snapshot = RemoteSwarmPlanSnapshot {
-                swarm_id: swarm_id.clone(),
-                items: items.clone(),
-                reason: reason.clone(),
-                summary,
-            };
-            // A plain rows push (no reason, no summary) is the server keeping the
-            // pinned list current, not a plan mutation: no notice for it.
-            if reason.is_some() || snapshot.summary.is_some() {
-                let notice = snapshot.status_notice();
-                app.set_status_notice(notice);
-            }
-            app.swarm.plan_swarm_id = Some(snapshot.swarm_id.clone());
-            app.swarm.plan_items = snapshot.items.clone();
+        ServerEvent::SwarmPlan { items, .. } => {
+            // The server sends this from inside the lock that mutated the list,
+            // so the events arrive in mutation order and nothing here has to drop
+            // a stale one. It is the pinned list's only model.
+            app.swarm.plan_items = items;
             false
         }
         ServerEvent::McpStatus { servers } => {

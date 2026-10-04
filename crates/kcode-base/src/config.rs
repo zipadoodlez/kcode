@@ -9,7 +9,7 @@ pub use kcode_config_types::{
     MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
     NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
     PowerConfig, ProviderConfig, ReasoningDisplayMode, SessionPickerResumeAction, SwarmSpawnMode,
-    SwarmStripLayout, TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
+    TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -119,7 +119,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "KCODE_SWARM_MODEL",
     "KCODE_SWARM_MAX_CONCURRENT_AGENTS",
     "KCODE_SWARM_SPAWN_MODE",
-    "KCODE_SWARM_STRIP_LAYOUT",
     "KCODE_TOOL_CALL_DETAILS",
     "KCODE_TOOL_PROFILE",
     "KCODE_TOOLS",
