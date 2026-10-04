@@ -243,30 +243,30 @@ Liveness derives from the holder's own session status plus the rule that a holde
 never return releases its rows, through one `assignee_is_dead` used by both the sweep and
 dispatch. The member projection and the runtime extras go.
 
-Delete (A4): `SwarmMemberRuntime.todo_items` (`protocol/src/lib.rs:450`, the third copy
-of a session's rows after the file and the run's sparse status, folded from `TodoEvent`s
-by `compact_todo_items` and the two `update_active_todo_*` helpers
-(`server/background_tasks.rs:362-505`) and mapped again into `GalleryTodo` for the
-gallery), `SwarmTodoItem`, `SwarmToolIntent`, the two `update_active_todo_*` helpers, the
-four member shapes, and the third event log. `tool_intents` is not a row fact: it is the
-"which tool is this worker running" display, nested under the compacted item by
-`update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather than dying with the
-cache. S2 landed, so the TUI mapping and the `member_runtime_extras` list read are gone
-with the surfaces that consumed them.
+Delete (A4): `SwarmMemberRuntime.todo_items` (`protocol/src/lib.rs`, the third copy of a
+session's rows after the file and the run's sparse status, folded from `TodoEvent`s by
+`compact_todo_items` and the two `update_active_todo_*` helpers
+(`server/background_tasks.rs:362-505`)), `SwarmTodoItem`, `SwarmToolIntent`, the two
+`update_active_todo_*` helpers, the four member shapes, and the third event log.
+`tool_intents` is not a row fact: it is the "which tool is this worker running" display,
+nested under the compacted item by `update_active_todo_tool`, so it moves onto
+`SwarmMemberStatus` rather than dying with the cache. S2 landed, so the adapter that built
+`GalleryTodo`/`GalleryToolIntent`, the strip/page call sites and the `member_runtime_extras`
+list read are gone with the surfaces that consumed them; `GalleryTodo`,
+`GalleryToolIntent` and `members_to_tiles` in `kcode-tui-render` now have no consumer.
 
 surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
 lines ~−1,000. risk: med.
 
 The projection becomes one type, so member appearance follows the typed status:
 `kcode-tui-render` takes `SwarmLifecycleStatus` (a dependency on the data-only
-`kcode-session-types`), so the string matches in `swarm_gallery.rs` and
-`is_active_status` become enum matches; one module owns accent, glyph, label and sort
-rank, with an `is_working` predicate kept distinct from lifecycle `is_active` so a
-stalled node does not spin; the duplicate map
-`info_widget_swarm_background::swarm_status_style` goes; and the swarm-path `Color::Rgb`
-literals become `kcode_tui_style` role accessors so `/colors` can recolor them (the small
-default shift is accepted). The projection's `RunningStale` goes with it: 0.4f removed
-its only producer (a plan item's status), so the variant is unreachable.
+`kcode-session-types`), so the string matches the pinned list still makes
+(`is_active_status`, `status_glyph`, `status_accent`) become enum matches; one module owns
+accent, glyph, label and sort rank, with an `is_working` predicate kept distinct from
+lifecycle `is_active` so a stalled node does not spin. S2 landed, so the duplicate
+`swarm_status_style` map and the swarm-path `Color::Rgb` literals went with the adapter
+they lived in. The projection's `RunningStale` goes with it: 0.4f removed its only
+producer (a plan item's status), so the variant is unreachable.
 
 **Live check (row t30), run with S2's surface after S3 lands.** Build
 `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo
@@ -288,10 +288,11 @@ last write, and the next write re-reads the file first (rule 2).
 
 ### S5. The file's fields
 
-**`status`, `priority` and `group` leave the type** (B3), with the four status
-vocabularies they keep alive: five status helpers in `kcode-plan/src/lib.rs`,
-`canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
-`normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the TUI.
+**`status`, `priority` and `group` leave the type** (B3), with the status vocabularies
+they keep alive: the status helpers in `kcode-plan/src/lib.rs` and
+`canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`. S2 landed, so
+the TUI's `normalize_plan_status_for_todo`, `status_badge` and `priority_rank` went with
+the surfaces that used them.
 
 Dropping `status` is the larger half, because the plan classifies by it everywhere:
 `summarize_plan_graph`, `completed_item_ids`, `is_active_status`, `newly_ready_item_ids`
