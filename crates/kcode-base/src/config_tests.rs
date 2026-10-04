@@ -645,7 +645,7 @@ fn test_generated_default_config_has_expected_user_defaults() {
         "generated default config should document ACP profile settings"
     );
     assert!(
-        content.contains("[agents]") && content.contains("swarm_spawn_mode = \"inline\""),
+        content.contains("[agents]") && content.contains("swarm_spawn_mode = \"headless\""),
         "generated default config should document agent spawn defaults"
     );
 
