@@ -86,10 +86,9 @@ fn idle_monitor_should_start(client_count: usize, has_live_headless_worker: bool
     client_count == 0 && !has_live_headless_worker
 }
 
-async fn has_live_headless_worker(sessions: &SessionAgents, swarm_state: &SwarmState) -> bool {
+async fn has_live_headless_worker(sessions: &SessionAgents, swarm_members: &SwarmMembers) -> bool {
     let live_sessions: HashSet<String> = sessions.read().await.keys().cloned().collect();
-    swarm_state
-        .members
+    swarm_members
         .read()
         .await
         .values()
@@ -118,11 +117,11 @@ const SWARM_TERMINAL_MEMBER_GC_BATCH_SIZE: usize = 64;
 
 async fn prune_expired_terminal_swarm_members(
     sessions: &SessionAgents,
-    swarm_state: &SwarmState,
+    swarm_members: &SwarmMembers,
 ) -> usize {
     let retention = swarm::swarm_terminal_member_retention();
     let mut candidates = {
-        let members = swarm_state.members.read().await;
+        let members = swarm_members.read().await;
         expired_terminal_member_ids(&members, retention)
     };
     candidates.truncate(SWARM_TERMINAL_MEMBER_GC_BATCH_SIZE);
@@ -139,7 +138,7 @@ async fn prune_expired_terminal_swarm_members(
             continue;
         }
         let removed_swarm_id = {
-            let mut members = swarm_state.members.write().await;
+            let mut members = swarm_members.write().await;
             let still_expired = members.get(&session_id).is_some_and(|member| {
                 member.status.is_terminal() && member.last_status_change.elapsed() >= retention
             });
@@ -155,7 +154,7 @@ async fn prune_expired_terminal_swarm_members(
             continue;
         };
 
-        remove_session_from_swarm(&session_id, &swarm_id, &swarm_state.members).await;
+        remove_session_from_swarm(&session_id, &swarm_id, swarm_members).await;
         pruned += 1;
     }
 
@@ -179,14 +178,14 @@ async fn prune_expired_terminal_swarm_members(
 /// [`swarm::idle_spawned_worker_reap_candidates`] for the exact policy.
 async fn reap_idle_spawned_workers(
     sessions: &SessionAgents,
-    swarm_state: &SwarmState,
+    swarm_members: &SwarmMembers,
     soft_interrupt_queues: &SessionInterruptQueues,
 ) -> usize {
     let Some(idle_after) = swarm::swarm_idle_worker_reap_after() else {
         return 0;
     };
     let candidates = {
-        let members = swarm_state.members.read().await;
+        let members = swarm_members.read().await;
         swarm::idle_spawned_worker_reap_candidates(&members, idle_after)
     };
     if candidates.is_empty() {
@@ -198,7 +197,7 @@ async fn reap_idle_spawned_workers(
         // Re-validate under the current map: status may have changed between
         // candidate collection and removal (a resumed/reassigned worker).
         let still_reapable = {
-            let members = swarm_state.members.read().await;
+            let members = swarm_members.read().await;
             members.get(&session_id).is_some_and(|member| {
                 member.report_back_to_session_id.is_some()
                     && (member.status == SwarmLifecycleStatus::Ready || member.status.is_terminal())
@@ -211,7 +210,7 @@ async fn reap_idle_spawned_workers(
 
         // Ask any attached client (visible spawned window) to close itself.
         let _ = fanout_session_event(
-            &swarm_state.members,
+            swarm_members,
             &session_id,
             ServerEvent::SessionCloseRequested {
                 reason: format!(
@@ -231,13 +230,13 @@ async fn reap_idle_spawned_workers(
         }
 
         let removed_swarm_id = {
-            let mut members = swarm_state.members.write().await;
+            let mut members = swarm_members.write().await;
             let root = swarm::swarm_root(&members, &session_id);
             members.remove(&session_id);
             root
         };
         if let Some(ref swarm_id) = removed_swarm_id {
-            remove_session_from_swarm(&session_id, swarm_id, &swarm_state.members).await;
+            remove_session_from_swarm(&session_id, swarm_id, swarm_members).await;
         }
         crate::logging::info(&format!(
             "Reaped idle spawned swarm worker {session_id} (idle > {}s)",
@@ -501,12 +500,9 @@ async fn capture_runtime_memory_attribution_sample(
 mod state;
 
 use self::state::latest_peer_touches;
-pub use self::state::{
-    FileAccess, RowRunState, RunState, SessionControlHandle, SwarmEvent, SwarmEventType,
-    SwarmMember, SwarmState,
-};
+pub use self::state::{FileAccess, SessionControlHandle, SwarmEvent, SwarmEventType, SwarmMember};
 use self::state::{
-    SessionInterruptQueues, fanout_live_client_event, fanout_session_event,
+    SessionInterruptQueues, SwarmMembers, fanout_live_client_event, fanout_session_event,
     queue_soft_interrupt_for_session, register_background_tool_signal,
     register_session_event_sender, register_session_interrupt_queue, remove_background_tool_signal,
     remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
@@ -608,7 +604,7 @@ pub struct Server {
     /// File-touch tracking service (forward path index + reverse session index)
     file_touch: FileTouchService,
     /// Shared ownership of core swarm coordination state.
-    swarm_state: SwarmState,
+    swarm_members: SwarmMembers,
     /// Active and available TUI debug channels (request_id, command)
     client_debug_state: Arc<RwLock<ClientDebugState>>,
     /// Channel to receive client debug responses from TUI (request_id, response)
@@ -683,7 +679,7 @@ impl Server {
             client_count: Arc::new(RwLock::new(0)),
             client_connections: Arc::new(RwLock::new(HashMap::new())),
             file_touch: FileTouchService::new(),
-            swarm_state: SwarmState::new(restored_swarm_members, HashMap::new()),
+            swarm_members: Arc::new(RwLock::new(restored_swarm_members)),
             client_debug_state: Arc::new(RwLock::new(ClientDebugState::default())),
             client_debug_response_tx,
             debug_jobs: Arc::new(RwLock::new(HashMap::new())),
@@ -746,7 +742,7 @@ impl Server {
 
     async fn recover_headless_sessions_on_startup(&self) {
         let sessions_to_restore = {
-            let members = self.swarm_state.members.read().await;
+            let members = self.swarm_members.read().await;
             members
                 .values()
                 .filter(|member| headless_member_should_restore(&member.status, member.is_headless))
@@ -791,17 +787,17 @@ impl Server {
                         &session_id,
                         SwarmLifecycleStatus::Failed,
                         Some(truncate_detail(&error.to_string(), 120)),
-                        &self.swarm_state.members,
+                        &self.swarm_members,
                         Some(&self.event_history),
                         Some(&self.event_counter),
                         Some(&self.swarm_event_tx),
                     )
                     .await;
                     if let Some(swarm_id) = {
-                        let members = self.swarm_state.members.read().await;
+                        let members = self.swarm_members.read().await;
                         swarm::swarm_root(&members, &session_id)
                     } {
-                        persist_swarm_state_for(&swarm_id, &self.swarm_state.members).await;
+                        persist_swarm_state_for(&swarm_id, &self.swarm_members).await;
                     }
                     continue;
                 }
@@ -888,14 +884,14 @@ impl Server {
                     &session_id,
                     SwarmLifecycleStatus::Ready,
                     None,
-                    &self.swarm_state.members,
+                    &self.swarm_members,
                     Some(&self.event_history),
                     Some(&self.event_counter),
                     Some(&self.swarm_event_tx),
                 )
                 .await;
                 if let Some(swarm_id) = {
-                    let members = self.swarm_state.members.read().await;
+                    let members = self.swarm_members.read().await;
                     swarm::swarm_root(&members, &session_id)
                 } {
                     swarms_to_persist.insert(swarm_id);
@@ -930,7 +926,7 @@ impl Server {
                 "resuming",
                 "restored interrupted headless session after reload",
             );
-            let recover_swarm_members = Arc::clone(&self.swarm_state.members);
+            let recover_swarm_members = Arc::clone(&self.swarm_members);
             let recover_event_history = Arc::clone(&self.event_history);
             let recover_event_counter = Arc::clone(&self.event_counter);
             let recover_swarm_event_tx = self.swarm_event_tx.clone();
@@ -1055,7 +1051,7 @@ impl Server {
         }
 
         for swarm_id in swarms_to_persist {
-            persist_swarm_state_for(&swarm_id, &self.swarm_state.members).await;
+            persist_swarm_state_for(&swarm_id, &self.swarm_members).await;
         }
 
         crate::logging::info(&format!(
@@ -1132,7 +1128,7 @@ impl Server {
         // In the unified server design, self-dev sessions share the main server,
         // so the shared server must always listen for reload signals.
         let signal_sessions = Arc::clone(&self.sessions);
-        let signal_swarm_members = Arc::clone(&self.swarm_state.members);
+        let signal_swarm_members = Arc::clone(&self.swarm_members);
         let signal_shutdown_signals = Arc::clone(&self.shutdown_signals);
         let signal_swarm_event_tx = self.swarm_event_tx.clone();
         tokio::spawn(async move {
@@ -1161,7 +1157,7 @@ impl Server {
 
         // Spawn the bus monitor for swarm coordination
         let monitor_file_touch = self.file_touch.clone();
-        let monitor_swarm_members = Arc::clone(&self.swarm_state.members);
+        let monitor_swarm_members = Arc::clone(&self.swarm_members);
         let monitor_sessions = Arc::clone(&self.sessions);
         let monitor_soft_interrupt_queues = Arc::clone(&self.soft_interrupt_queues);
         let monitor_event_history = Arc::clone(&self.event_history);
@@ -1180,7 +1176,7 @@ impl Server {
             .await;
         });
 
-        let stale_swarm_members = Arc::clone(&self.swarm_state.members);
+        let stale_swarm_members = Arc::clone(&self.swarm_members);
         tokio::spawn(async move {
             let mut interval =
                 tokio::time::interval(crate::server::swarm::swarm_task_sweep_interval());
@@ -1192,26 +1188,30 @@ impl Server {
         });
 
         let gc_sessions = Arc::clone(&self.sessions);
-        let gc_swarm_state = self.swarm_state.clone();
+        let gc_swarm_members = self.swarm_members.clone();
         let gc_soft_interrupt_queues = Arc::clone(&self.soft_interrupt_queues);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(swarm::swarm_terminal_member_gc_interval());
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
-                prune_expired_terminal_swarm_members(&gc_sessions, &gc_swarm_state).await;
+                prune_expired_terminal_swarm_members(&gc_sessions, &gc_swarm_members).await;
                 // Backstop for coordinator cleanup: close finished spawned
                 // workers that have been idle past the reap window so they do
                 // not accumulate one leaked client process each.
-                reap_idle_spawned_workers(&gc_sessions, &gc_swarm_state, &gc_soft_interrupt_queues)
-                    .await;
+                reap_idle_spawned_workers(
+                    &gc_sessions,
+                    &gc_swarm_members,
+                    &gc_soft_interrupt_queues,
+                )
+                .await;
             }
         });
 
         // Keep the machine awake while any session is actively streaming/processing.
         // This watches the same "running" member signal Waybar surfaces as
         // "N streaming" and toggles a best-effort OS power inhibitor accordingly.
-        Self::spawn_power_inhibitor(Arc::clone(&self.swarm_state.members));
+        Self::spawn_power_inhibitor(Arc::clone(&self.swarm_members));
 
         // Spawn the retained-heap watchdog: glibc keeps freed pages
         // inside arenas, and the event-driven trim hooks (turn completion,
@@ -1520,7 +1520,7 @@ impl Server {
             lifecycle::spawn_temporary_lifecycle_monitor(
                 Arc::clone(&self.client_count),
                 Arc::clone(&self.sessions),
-                self.swarm_state.clone(),
+                self.swarm_members.clone(),
                 self.socket_path.clone(),
                 self.debug_socket_path.clone(),
                 self.identity.name.clone(),
@@ -1531,7 +1531,7 @@ impl Server {
         } else {
             let idle_client_count = Arc::clone(&self.client_count);
             let idle_sessions = Arc::clone(&self.sessions);
-            let idle_swarm_state = self.swarm_state.clone();
+            let idle_swarm_members = self.swarm_members.clone();
             let idle_server_name = self.identity.name.clone();
             tokio::spawn(async move {
                 let mut idle_since: Option<std::time::Instant> = None;
@@ -1542,7 +1542,7 @@ impl Server {
 
                     let count = *idle_client_count.read().await;
                     let has_live_headless_worker =
-                        has_live_headless_worker(&idle_sessions, &idle_swarm_state).await;
+                        has_live_headless_worker(&idle_sessions, &idle_swarm_members).await;
 
                     if idle_monitor_should_start(count, has_live_headless_worker) {
                         // No clients connected

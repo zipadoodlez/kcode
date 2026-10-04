@@ -31,8 +31,8 @@ use super::provider_control::{
     try_available_models_updated_event,
 };
 use super::{
-    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents,
-    SessionControlHandle, SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmMutationRuntime,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents, SessionControlHandle,
+    SessionInterruptQueues, SwarmEvent, SwarmMember, SwarmMutationRuntime,
     register_session_interrupt_queue, send_todos_to_session, truncate_detail, update_member_status,
 };
 use crate::agent::Agent;

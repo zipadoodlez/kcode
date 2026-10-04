@@ -21,15 +21,6 @@ pub struct PlanGraphSummary {
     pub cycle_ids: Vec<String>,
 }
 
-/// Whether a run's own per-row status means the row is no longer in flight for
-/// that run. The run's map is the only place these words live.
-pub fn is_terminal_status(status: &str) -> bool {
-    matches!(
-        status,
-        "completed" | "done" | "failed" | "stopped" | "crashed"
-    )
-}
-
 pub fn missing_dependencies<'a>(item: &'a TaskItem, known_ids: &HashSet<&'a str>) -> Vec<String> {
     item.blocked_by
         .iter()
@@ -176,13 +167,5 @@ mod tests {
             summary.cycle_ids,
             vec!["a".to_string(), "b".to_string(), "c".to_string()]
         );
-    }
-
-    #[test]
-    fn is_terminal_status_matches_the_runs_vocabulary() {
-        assert!(is_terminal_status("failed"));
-        assert!(is_terminal_status("done"));
-        assert!(!is_terminal_status("queued"));
-        assert!(!is_terminal_status("running"));
     }
 }

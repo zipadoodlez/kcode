@@ -1092,7 +1092,7 @@ async fn startup_recovery_resumes_interrupted_headless_sessions_after_reload() -
 
     let server = Server::new(provider.clone());
     {
-        let members = server.swarm_state.members.read().await;
+        let members = server.swarm_members.read().await;
         assert_eq!(
             members
                 .get(&initiator.id)
@@ -1138,7 +1138,7 @@ async fn startup_recovery_resumes_interrupted_headless_sessions_after_reload() -
                 })
             };
             let statuses_ready = {
-                let members = server.swarm_state.members.read().await;
+                let members = server.swarm_members.read().await;
                 members
                     .get(&initiator.id)
                     .map(|member| member.status.as_str())

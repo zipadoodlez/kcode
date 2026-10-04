@@ -1,8 +1,8 @@
 use super::{
-    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents, SessionInterruptQueues,
-    SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event, remove_background_tool_signal,
-    remove_session_from_swarm, remove_session_interrupt_queue, unregister_session_event_sender,
-    update_member_status,
+    ClientConnectionInfo, ClientDebugState, FileTouchService, SessionAgents,
+    SessionInterruptQueues, SwarmEvent, SwarmEventType, SwarmMember, record_swarm_event,
+    remove_background_tool_signal, remove_session_from_swarm, remove_session_interrupt_queue,
+    unregister_session_event_sender, update_member_status,
 };
 use crate::protocol::SwarmLifecycleStatus;
 use anyhow::Result;

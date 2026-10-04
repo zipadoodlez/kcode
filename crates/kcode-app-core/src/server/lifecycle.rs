@@ -138,7 +138,7 @@ pub(crate) fn cleanup_temporary_metadata(socket_path: &Path) {
 pub(crate) fn spawn_temporary_lifecycle_monitor(
     client_count: Arc<RwLock<usize>>,
     sessions: super::SessionAgents,
-    swarm_state: super::SwarmState,
+    swarm_members: super::SwarmMembers,
     socket_path: PathBuf,
     debug_socket_path: PathBuf,
     server_name: String,
@@ -164,7 +164,7 @@ pub(crate) fn spawn_temporary_lifecycle_monitor(
 
             let count = *client_count.read().await;
             let has_live_headless_worker =
-                super::has_live_headless_worker(&sessions, &swarm_state).await;
+                super::has_live_headless_worker(&sessions, &swarm_members).await;
             if super::idle_monitor_should_start(count, has_live_headless_worker) {
                 if idle_since.is_none() {
                     idle_since = Some(Instant::now());

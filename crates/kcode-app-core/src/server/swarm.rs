@@ -1845,8 +1845,7 @@ mod tests {
             members.insert("worker".to_string(), worker);
         }
 
-        let _outcome =
-            salvage_assignments_of_dead_member("worker", "coord", &swarm_members).await;
+        let _outcome = salvage_assignments_of_dead_member("worker", "coord", &swarm_members).await;
 
         assert_eq!(
             row_holder(repo.path(), "task-1"),

@@ -849,8 +849,7 @@ async fn spawn_resolves_the_requesting_session_as_run_root() {
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     let run_id =
-        ensure_spawn_coordinator_swarm(1, "req", &client_event_tx, &swarm_members, 32)
-            .await;
+        ensure_spawn_coordinator_swarm(1, "req", &client_event_tx, &swarm_members, 32).await;
 
     // A session that reports back to nobody roots its own run; there is no
     // coordinator slot to claim and no bootstrap message to send.
@@ -883,14 +882,8 @@ async fn terminal_members_do_not_consume_spawn_capacity() {
     }
     let (client_event_tx, _client_event_rx) = mpsc::unbounded_channel();
 
-    let allowed = ensure_spawn_coordinator_swarm(
-        7,
-        "root",
-        &client_event_tx,
-        &swarm_members,
-        32,
-    )
-    .await;
+    let allowed =
+        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, 32).await;
 
     assert_eq!(allowed.as_deref(), Some("root"));
 }
@@ -912,8 +905,7 @@ async fn spawn_rejected_at_configured_live_agent_limit() {
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     let refused =
-        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, 2)
-            .await;
+        ensure_spawn_coordinator_swarm(7, "root", &client_event_tx, &swarm_members, 2).await;
 
     assert!(refused.is_none());
     assert!(matches!(

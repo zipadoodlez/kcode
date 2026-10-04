@@ -102,41 +102,15 @@ pub(super) fn latest_peer_touches(
     latest
 }
 
-/// What a run knows about one row while it lives: the lifecycle status a turn set
-/// for it. The rows themselves are the list's, and everything else a row says about
-/// itself is read from there.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct RowRunState {
-    /// `queued`, `running` or `failed`, set by the turn working the row. Empty until
-    /// a dispatch sets it, which is when the row's own status stands.
-    pub status: String,
-}
-
-/// A run's own state, keyed by row id. In memory only: a restart forgets it, and the
-/// rows come back from the list.
-pub type RunState = HashMap<String, RowRunState>;
-
-/// Shared ownership of the core swarm coordination state.
-#[derive(Clone)]
-pub struct SwarmState {
-    pub members: Arc<RwLock<HashMap<String, SwarmMember>>>,
-    pub runs: Arc<RwLock<HashMap<String, RunState>>>,
-}
+/// The live session registry, keyed by session id. Membership is the spawn tree,
+/// so the run a member belongs to is derived, never stored.
+pub(super) type SwarmMembers = Arc<RwLock<HashMap<String, SwarmMember>>>;
 
 /// Live transport attachment for a connected session.
 #[derive(Clone, Debug)]
 pub struct LiveSessionAttachment {
     pub connection_id: String,
     pub event_tx: mpsc::UnboundedSender<ServerEvent>,
-}
-
-impl SwarmState {
-    pub fn new(members: HashMap<String, SwarmMember>, runs: HashMap<String, RunState>) -> Self {
-        Self {
-            members: Arc::new(RwLock::new(members)),
-            runs: Arc::new(RwLock::new(runs)),
-        }
-    }
 }
 
 /// Information about a session in a swarm
