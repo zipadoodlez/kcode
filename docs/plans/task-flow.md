@@ -274,6 +274,30 @@ Delete: four renderers and their caches, 15 file reads, the gallery's separate m
 rendering, the compacted member row cache. surface: −4 renderers, −4 caches, −3 protocol
 member types, −1 item cache. lines ~−1,300. risk: med.
 
+**Landed 2026-10-04 (first half).** The server is the one reader: on every write and on
+subscribe it sends each session the rows it may work, and the pinned band renders them
+with its own vocabulary (id, indentation by `parent`, a glyph and color from the row plus
+its holder's live status, the holder's name). Deleted: the pinned band's file read, its
+1-second cache and its refresh thread, the plan broadcast, `rows_with_run_status`,
+`failed_reasons_for`, `member_details` and the plan's derived summary. Kept for the second
+half: the card, the side-panel page, the info widget's pips and the separate roster.
+
+**Smoke test (the second half is not landed, so check this on what is).** Build
+`scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode`, then in a scratch repo
+with a `tasks.jsonl`:
+
+1. Add rows with the `todo` tool: two root rows, one child naming a root as `parent`, and
+   one row blocked by another. The pinned list at the top should show `<id> <words>` per
+   row, the child indented under its parent, and the blocked row marked. Fixing the list
+   should need no command: it is always on.
+2. Run `/auto <words>` (or spawn a worker by hand) so a member takes a row. That row's
+   glyph should animate and its holder's name (`@name`) should appear beside it.
+3. Stop the holder mid-row (`swarm stop`). Its row should go red.
+4. Close a blocker with the tool; the blocked row should lose its mark on that write.
+
+A hand edit of `tasks.jsonl` is read on the next write, not pushed: the list shows the
+last write, and the next write re-reads the file first (rule 2).
+
 Gate: the four old surfaces gone; a live TUI check on a run with two workers, showing
 progress, holder and status; the client suite.
 
