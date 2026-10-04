@@ -1,7 +1,7 @@
 # The server's shape
 
 The request path and the tool that drives it. `handle_client` is first because its
-request context is where the per-arm `SwarmState` literals die. Every open item of this
+request context is where the swarm handles come together. Every open item of this
 subject is one checkbox below, with its design in the item.
 
 ## Tasks
@@ -22,12 +22,11 @@ subject is one checkbox below, with its design in the item.
   - **~85 lines of teardown** (2296-2380) that already calls
     `client_disconnect_cleanup` helpers.
   - **24 args** under `#[expect(clippy::too_many_arguments)]`, with one production
-    caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical. Six
-    args are swarm state: one `SwarmState` pair (`swarm_members`/`swarm_runs` ->
-    `members`, `runs`) and four loose Arcs beside it (`event_history`, `event_counter`,
-    `swarm_event_tx`, `swarm_mutation_runtime`).
-    The `Comm*` arms re-wrap them into a `SwarmState { .. }` literal: that literal is
-    the swarm-state condense's duplication, and a request context is where it dies.
+    caller (`server/runtime.rs:261`) plus tests, so a context struct is mechanical. Five
+    are swarm state: the member registry (`swarm_members`) and four loose Arcs beside it
+    (`event_history`, `event_counter`, `swarm_event_tx`, `swarm_mutation_runtime`).
+    The sixth (`swarm_runs`) and the `SwarmState { .. }` literal its callers rebuilt are
+    already gone, so the request context is where the rest dies.
   - **The prologue is four unnamed state machines** sharing ~15 locals by name
     (accept-until-Subscribe, session creation, registration, forwarder spawn).
   - **Per-client mutable locals** every arm mutates: turn lifecycle
@@ -39,18 +38,19 @@ subject is one checkbox below, with its design in the item.
  H1-H3 are pure moves and can share a change.
   - [ ] H1 **`ClientContext`**: one struct for the 28 args (Arcs cloned once at the
     caller), deleting the `#[expect]`.
-  - [ ] H2 **Fold swarm ownership in**: pass `SwarmState` plus one
-    `SwarmRuntimeHandles` for the six Arcs and delete the per-arm literals (gated on
-    the swarm-state condense, `plans/task-flow.md` D2, not on H1).
+  - [ ] H2 **Fold swarm ownership in**: pass the member registry plus one
+    `SwarmRuntimeHandles` for the four Arcs; the `runs` handle and the per-arm literals
+    are already gone (not gated on H1).
   - [ ] H3 **Name the prologue**: `accept_initial_request`, `start_client_session`,
     `spawn_client_event_forwarder`, target under ~100 lines of named calls before the
     `match`.
   - [ ] H4 **Move the inline arms** into sibling modules, largest first, so the file
-    leaves `code_size_budget.json` (gated on H1-H3).
+    falls under 1,200 lines (gated on H1-H3).
   - [ ] H5 **The turn-lifecycle locals**: one owner for the in-flight turn, reusing the
     `App` result rather than re-deriving it.
- Done when: `handle_client` is under ~600 lines, the file is out of the size budget,
- and no `SwarmState { .. }` literal is built inside a request arm.
+ Done when: `handle_client` is under ~600 lines, the file under 1,200, and its swarm
+ state is one member registry plus one handles struct, with no run map threaded and
+ no `SwarmState { .. }` literal anywhere in the request path.
 - [ ] **Condense `tool/communicate.rs`.** The verb cut landed, removing the assign verbs, the read views, the report
  action and the channels, so the file is now 426 lines and two concepts remain: swarm
  coordination (spawn, stop, list_models, message) and the model-list formatter, with

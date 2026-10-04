@@ -1,10 +1,9 @@
 # The app's shape
 
 `App` (`crates/kcode-tui/src/tui/app.rs`) is the largest single cost in the tree, and
-the slash-command surface is read out of it. The shape is ratcheted
-(`scripts/check_app_shape.py`), so the counts are read where they are enforced rather
-than repeated here. Every open item of this subject is one checkbox below, with its
-design in the item; the tasks are independent except where a line names a gate.
+the slash-command surface is read out of it. The shape counts are read at the step
+rather than repeated here. Every open item of this subject is one checkbox below, with
+its design in the item; the tasks are independent except where a line names a gate.
 
 ## Tasks
 
@@ -34,8 +33,8 @@ design in the item; the tasks are independent except where a line names a gate.
   - [ ] Provider and model context: 15 fields but ~500 sites across 30+ files, mixing
     provider connection (name/model/transport/credential/reasoning/service tier) with
     model selection (picker cache, pending switch/route/reasoning). Split along that
-    seam first; do not create a second registry (coordinate with the swarm/comm
-    condense, `plans/task-flow.md` D2). Two names also live on other structs
+    seam first; do not create a second registry; the run-state deletion has landed.
+    Two names also live on other structs
     (`upstream_provider`, `provider_session_id`).
   - [ ] `Input`: 21 fields, ~1940 direct sites, 69 files, and hyper-common names
     (`input`, `cursor_pos` are also parameters, locals, and fields on
@@ -50,10 +49,9 @@ design in the item; the tasks are independent except where a line names a gate.
   - [ ] Revisit `TuiState` last: a 122-method trait with two impls, and `TestState` (39
     fields, 83 sites, 13 files) exists so render tests avoid constructing an `App`.
     Deleting it is a trade, decided once `App` is cheap to construct.
- Done when: field count and `impl App` count fall monotonically
- (`check_app_shape.py`), `use super::*` falls from 116, and `app.rs` leaves
- `code_size_budget.json`. Out of scope here: `handle_client`, provider identity, the
- crate spine (`plans/hygiene.md`).
+ Done when: field count and `impl App` count fall monotonically, `use super::*` falls
+ from 116, and `app.rs` falls under 1,200 lines. Out of scope here: `handle_client`,
+ provider identity, the crate spine (`plans/hygiene.md`).
 - [ ] **Behavior-check the landed extractions.** They were cut by cohesion (which
  methods touch which fields), so tests prove the moves preserved behavior, not that
  the boundaries are right. Trace the write sequences at turn/reconnect/reset
@@ -89,6 +87,16 @@ design in the item; the tasks are independent except where a line names a gate.
   server path does not; answer that per surface, then collapse to one path with the
   transport behind it. (A1, 2026-10-03; re-core, high risk, keep as a scoped proposal
   until each fork is behavior-checked.)
+- [ ] **(decision) The `/improve`, `/refactor` and `/context` surfaces read the work file
+ in the client.** They call `crate::todo::load_tasks` (`kcode-tui`, 12 calls today) instead
+ of rendering the rows the server pushes, and `remote/key_handling.rs` reads the *local*
+ file with `remote_session_id`, so a client attached to a remote server reads the wrong
+ machine's list. (The notification subtitle in `turn_notify.rs` is a separate, older read,
+ out of scope.) Two fixes: render the pushed rows, which is right only when the improve
+ target is the session this client is attached to, or move the status and list logic
+ server-side and have the client name the session it wants rows for. Gate: no `load_tasks`
+ in `remote/key_handling.rs`, `commands_improve.rs` or the `/context` arm, and those
+ surfaces' tests pass. (Allocated during S5, `7248edd5`.)
 - [ ] **(decision) Re-core the SSH-login state**
  (`crates/kcode-tui/src/tui/app/auth_remote.rs`). One flow tracked by five correlated
  fields (`phase`, `task`, `operation`, `input_kind`, `input`) with 12 guarded
