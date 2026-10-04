@@ -44,10 +44,6 @@ pub struct TaskItem {
     /// engine type (rule 5): it writes what a closer gave it and reads none of it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub records: Vec<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub subsystem: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub file_scope: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
