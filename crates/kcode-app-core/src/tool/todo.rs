@@ -189,8 +189,10 @@ impl Tool for TodoTool {
 
     fn description(&self) -> &str {
         // Model-visible and always on, so every word is paid on every request.
-        // Handwritten, not generated.
-        "Read or change the open work of this repo: add a task, update one, or close one with the result that proves it was done."
+        // Handwritten, not generated. It names where the list lives because
+        // nothing else the model reads does, and the first fan-out run's root
+        // hunted the filesystem for it (2026-10-04).
+        "Read or change the open work of this repo, held in tasks.jsonl at the repo root: add a task, update one, or close one with the result that proves it was done."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -494,10 +496,14 @@ mod tests {
     }
 
     #[test]
-    fn the_description_asks_for_the_proving_check() {
+    fn the_description_asks_for_the_proving_check_and_names_the_file() {
         let tool = TodoTool::new();
         let description = tool.description();
         assert!(description.contains("result that proves"), "{description}");
+        assert!(
+            description.contains("tasks.jsonl"),
+            "the model's half of rule 1 says where the list lives: {description}"
+        );
     }
 
     #[test]

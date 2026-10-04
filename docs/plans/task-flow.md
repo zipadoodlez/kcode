@@ -342,14 +342,6 @@ client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 24
   the user: the permission (a granted turn continues, a wake does not) and the poke's
   removal (no client continuation; every non-retryable error gets the short budget). It is
   the step's landing proof, so it runs when the list is done, not per step.
-- **G3.** The work list gets its user doc under `docs/user/`: `tasks.jsonl` at the repo
-  root, the `todo` tool's actions, and the close's required result are described only in
-  this plan, which is a design rather than a manual. It waits until the list settles,
-  which is worth writing once: the row gains its `kind` at 0.3, and S5's field cuts land
-  before the shape stops moving. The model's half of the same fact rides the tool
-  description, since rule 1 says where the list lives and nothing the model reads says
-  it: the first fan-out run's root ran `find /` and read a sibling repo's list before it
-  found its own (2026-10-04).
 
 ### What to verify when the list is done
 
