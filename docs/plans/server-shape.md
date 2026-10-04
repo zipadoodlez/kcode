@@ -51,8 +51,7 @@ subject is one checkbox below, with its design in the item.
     `App` result rather than re-deriving it.
  Done when: `handle_client` is under ~600 lines, the file is out of the size budget,
  and no `SwarmState { .. }` literal is built inside a request arm.
-- [ ] **Condense `tool/communicate.rs`.** The verb cut landed
- (`plans/task-flow.md` S1), removing the assign verbs, the read views, the report
+- [ ] **Condense `tool/communicate.rs`.** The verb cut landed, removing the assign verbs, the read views, the report
  action and the channels, so the file is now 426 lines and two concepts remain: swarm
  coordination (spawn, stop, list_models, message) and the model-list formatter, with
  an `execute` match between them. Measure at the step: the formatter is the only

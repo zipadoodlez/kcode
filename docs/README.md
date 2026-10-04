@@ -8,7 +8,9 @@ Documentation for kcode, a lean fork of [jcode](https://github.com/1jehuang/jcod
 - `internals/` - how kcode works: architecture, subsystems, protocols.
 - `dev/` - contributor process: testing, benchmarking, dependency hygiene.
 - `plans/` - the work lanes: one plan per subject, each holding its own task
-  checklist with the design beside the item. Not part of the bundled corpus.
+  checklist with the design beside the item; the repo's own `tasks.jsonl` at the root
+  mirrors their open items, one row per item, written as each stage starts. Not part of
+  the bundled corpus.
 - `what-was-removed.md` - the ledger of cuts: every deliberate removal and what it
   cost.
 

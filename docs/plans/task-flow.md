@@ -170,7 +170,7 @@ the second system growing back.
 
 These are the model the steps drive the tree to, not the tree. Where a rule and
 the type disagree today, the type is behind: `TaskItem` still carries `status`,
-`priority`, `group`, `subsystem` and `file_scope`, and S5 removes them.
+`priority` and `group`, and S5 removes them.
 
 1. **One file per repo**, `tasks.jsonl` at the root, found from git so a session in
    `crates/foo` reads the same list; outside a repo, a session scratch location.
@@ -189,7 +189,7 @@ the type disagree today, the type is behind: `TaskItem` still carries `status`,
 6. **Hierarchy is `parent`, blocking is `blocked_by`,** two fields because they are
    two facts. `group` is deleted, since the parent chain is the grouping.
 7. **The file stores those fields and nothing else:** no `status`, `priority`,
-   `group`, `subsystem` or `file_scope`, and line order promises nothing. Position
+   `group`, and line order promises nothing. Position
    is the default order. A row reads as claimed from `assigned_to`, and as ready only
    against the file: a close deletes the row and removes its id from every
    dependent's `blocked_by`, so an entry there always names an open row and a row
@@ -226,8 +226,8 @@ channel index with the shared-context store; those cuts are recorded in
   swarm state.
 - **Two artifact shapes**: `tool/todo.rs` hand-builds a close from three fields while
   `kcode-plan/src/artifact.rs` owns the seven-field `HandoffArtifact`.
-- **Four status vocabularies**, and the five fields the file does not need
-  (`status`, `priority`, `group`, `subsystem`, `file_scope`).
+- **Four status vocabularies**, and the three fields the file does not need
+  (`status`, `priority`, `group`).
 - **The `SwarmState` pair**, rebuilt as a literal at each request arm and threaded to
   ~40 functions.
 
@@ -237,111 +237,11 @@ The tool's action surface is now four actions (spawn, stop, list_models, message
 
 Every step lands whole, proven by the gate. The one `kcode run` probe against its own
 socket waits for the end of the list, where the user runs it, so no step is gated on it.
-Widest shared shape first, so no step sweeps call sites a later step reshapes: S1 opens
-the loop's path and S2 the client's, and S3-S5 then delete what those leave behind. The
-numbers label the stages, they are not an order: S3 waits on S2, and C4 waits on S3, because
-the worker's record is the one thing both of them touch. The `app.rs` re-core (`plans/app-shape.md`) is
-the tail and it is droppable: nothing here depends on it.
-
-### S1. The loop owns dispatch
-
-Landed 2026-10-03 in S1a-S1f: the loop's dispatch and the write that wakes it, the
-run's end, `stop` as the subtree-wide control verb, and every deletion below. The
-design is kept here because the gate has not run yet; the cuts are in
-`docs/what-was-removed.md` and the engine's surviving shape in `internals/swarm.md`.
-
-**The levers: `stop` stays, and it is the only control verb left.** `wake`, `retry` and
-`reassign`/`replace` were the loop's job done by hand, so they go; `cleanup` goes because the
-loop ends a run, and its members with it. `stop` is power, not surface: nothing else can end a
-session you are not attached to (`CommStop`, sent only from `tool/communicate.rs:245` and
-`:2509`, handled at `client_lifecycle.rs:2424`), and a permission with no revoke is not a
-permission.
-
-`stop` is the run's own lever, called by its root through the tool, and it is addressed to the
-run, not to one member. Its target is a session and the sessions
-under it on the spawn edge, which is the derivation membership already uses: naming the run's
-root ends the run, and naming a member takes that member and its own subtree. There is no batch
-form and no `all` flag; the set is derived from the target. Today it stops exactly one session
-and stops there (`handle_comm_stop` removes one entry), while the authority to stop is already
-subtree-wide (`swarm_is_self_or_ancestor`), so a run's root stopping itself leaves its members
-live. S1 closes that gap, and `cleanup`'s candidate selection goes with `cleanup`.
-
-The other levers are the list's, not a verb's: you read a run by reading the rows, and you
-control one by attaching, granting a turn, messaging a row's holder, or writing.
-
-Delete: the tool's driver with all of its policies, `fill_slots`, `assign_next`,
-`assign_task`, `await_members`, `retry`, `wake`, `cleanup` (and `cleanup_swarm_workers`
-with it, leaving `stop_swarm_sessions` its one caller), the read views
-(`status`, `summary`, `report`, `plan_status`, `read_context`, `resync_plan`, `list`,
-and `task_graph`/`expand_node`/`complete_node`, which are the `todo` tool's add and
-close in a second vocabulary and the only door to the dag engine), the `report` action,
-and the instruction protocol around it (the spawn reminder, the assignment suffix, the
-notification advice text). The tldr rule is not deleted here: four of its five callers
-go in this stage, and its last one is the single message verb, so it goes with that verb
-in S1f. The channels and the
-shared-context KV store go with them: `share`, `share_append`, `read`, `broadcast`,
-`dm`, `channel`, `list_channels`, `channel_members`, `subscribe_channel`,
-`unsubscribe_channel`. Keep: `spawn` (root only), `stop`, `list_models`, and one message verb, whose
-address is the owner of a named row.
-
-What replaces them: the loop's own dispatch (a holder write, plus the same wake a turn
-end already uses when the holder is headless), readiness as the wait, the close as the
-report, and the row's words as the handoff. The loop also ends a run: when its ready rows are
-gone the anchor closes, and the run's member sessions stop with it. Nothing does that today,
-which is how three idle headless members kept the swarm surface up on 2026-10-03 until
-`cleanup` was called by hand.
-
-New code, one piece: a write hook that wakes a headless holder when a row becomes ready,
-hung off the `TodoUpdated` event the tool already publishes and landing in the bus monitor,
-where the run state is already in hand. A ready row nobody holds wakes nobody: the pick takes
-only what the session holds, so the run's dispatch is what assigns it, and the assign is the
-write that wakes. Everything else in this stage is deletion.
-
-Two more facts the first fan-out run found unkept (2026-10-04), both in the pick and the
-seed and both rows of this stage:
-
-- **The pick refuses a row with no `kind`** (rule 8). `next_held_ready_row`'s `ready`
- predicate (`live_turn.rs:249`) and `row_is_ready` (`:271`) never read `kind`, and the
- tool writes a row with none (`tool/todo.rs:73`), so the loop hands over a row whose
- result requirements are unknown. The clause goes in the pick, not the write: the kind
- typed later is the intended recovery.
-- **The seed carries the kind.** `row_turn_message` (`live_turn.rs:299`) sends the id,
- the content and the note; the model's payload is the row's own words plus the kind, and
- the worker reads the kind from nowhere else.
-
-One more leftover of this stage's own deletions, landed 2026-10-04: `close_row_on_disk`,
-`claim_row_on_disk` and `expand_row_on_disk` had no caller since S1c deleted the plan engine
-and the DAG. All three went, and the one rule `close_row_on_disk` still held, that a run
-closes only a row that names nobody or names it, moved into `close_row` itself, where every
-close already passes, so one check covers the user's session and every member. Taking a row
-is a write, so the user's session keeps its power to close anything. `MAX_PLAN_ITEMS` went
-with them, its last user gone.
-
-Order inside the stage: the hook and the loop's dispatch land and are proven by the hand
-fan-out first, and only then do the deletions follow. This is the plan's own rule applied
-within the stage, and it is the one place it matters most: a deletion program whose
-replacement is unproven on the tree has already cut its fallback, and the fallback here
-is the only driver that has ever run a fan-out.
-
-F2's shape lands with this: what remains of `tool/communicate.rs` after the verb cut is
-`plans/server-shape.md`'s condense task, which owns the file.
-
-surface: −28 actions, −1 driver, −1 durable waiter store, −2 report channels, −1 KV,
-−1 channel index. lines ~−6,500 with tests. This stage strands the artifact producers and
-the member shapes; their types go in S4 and S3, and each owner counts its own cut.
-risk: high; this stage is the lane's test.
-
-Gate: one fan-out run in a scratch repo, end to end, on the loop alone. A root grants,
-spawns two workers, hands them rows, the workers close, the root integrates and closes
-the anchor. By hand, on the user's own socket, with the run's words in the transcript.
-If it fails, stop and report; do not patch around it.
-
-S1's later steps landed without a build, by the user's call (2026-10-03): S1c, S1d, S1e
-and S1f are deletion stages, and this plan already goes blind across those ("a deletion and
-a behavior change are checked differently"), so the stage's first compile and its first
-test run are the gate below rather than each step. What that costs: a compile error or a
-stale test left by S1c, S1d, S1e or S1f surfaces at the gate. Each step's evidence is in
-its commits, its row, and the README of the ledger when it dropped power.
+Widest shared shape first, so no step sweeps call sites a later step reshapes: S2 opens
+the client's path and S3-S5 then delete what it leaves behind. The numbers label the
+stages, they are not an order: S3 waits on S2, which delivers the rows it renders, and
+nothing else waits. The `app.rs` re-core (`plans/app-shape.md`) is the tail and it is
+droppable: nothing here depends on it.
 
 ### S2. One view
 
@@ -351,7 +251,7 @@ renders one surface: the rows, with the holder named per row and the holder's st
 page, the pinned band, the info pips, and the gallery's at-a-glance role. It is the one
 place this lane allows new code, because it absorbs the others.
 
-The read is C5. A run's rows already cross as `ServerEvent::SwarmPlan`
+A run's rows already cross as `ServerEvent::SwarmPlan`
 (`wire.rs:837`, produced at `server/swarm.rs:836` and `:894`, applied at
 `remote/server_events.rs:1995`), and the full rows already cross the bus on every write
 (`BusEvent::TodoUpdated { session_id, todos }`, `tool/todo.rs:307`), which the server
@@ -393,8 +293,7 @@ read (`comm_sync.rs:133-140`, a `completed/total` counter the forwarded bus even
 carries), the four member shapes, and the third event log. `tool_intents` is not a row
 fact: it is the gallery's "which tool is this worker running" display, nested under the
 compacted item by `update_active_todo_tool`, so it moves onto `SwarmMemberStatus` rather
-than dying with the cache. Gated by S2 (C5); the gallery is the only consumer, and C4 lands
-after this stage so the fields it moves land in one record instead of four.
+than dying with the cache. Gated by S2; the gallery is the only consumer.
 
 surface: −3 protocol types, −4 shapes, −1 event log, −2 liveness predicates.
 lines ~−1,000. risk: med.
@@ -445,9 +344,7 @@ surface: −1 type, −7 fields, −3 producers, −2 tool vocabularies. lines ~
 
 ### S5. The file's fields
 
-Two cuts with different dependencies.
-
-**S5a. `status`, `priority` and `group` leave the type** (B3), with the four status
+**`status`, `priority` and `group` leave the type** (B3), with the four status
 vocabularies they keep alive: five status helpers in `kcode-plan/src/lib.rs`,
 `canonical_todo_status` plus its two wrappers in `kcode-base/src/todo.rs`, and
 `normalize_plan_status_for_todo`, `status_badge` and a second `priority_rank` in the TUI.
@@ -459,15 +356,7 @@ is already gone: 0.4f's s12 stopped lowering the engine's statuses back into ite
 engine's own statuses no longer reach a row. Afterwards a row is ready when `blocked_by`
 is empty and liveness comes from the member, not the item.
 
-**S5b (C4). `subsystem` and `file_scope` move onto the worker's record.** They are the
-scheduler's inputs (assignment affinity matches them against a worker's metadata), not list
-fields, and 0.4 deleted the `node_meta` side-map that was once named as their destination.
-S1 changes this cut: the affinity was the scheduler's, and the scheduler went in S1b, so the
-two fields are now write-never and read-never (`assignment_affinities_for_task` was their
-only reader, and S1c deleted it). There is nothing to move them onto: the cut is two fields
-off `TaskItem`, and it no longer waits on S3.
-
-surface: −5 fields, −4 vocabularies. lines ~−500. risk: med.
+surface: −3 fields, −4 vocabularies. lines ~−500. risk: med.
 
 ### D2. The swarm/comm condense (gates `plans/server-shape.md` H2)
 
@@ -480,9 +369,6 @@ client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 24
 
 ### Close out
 
-- **B2.** This repo's own list migrates: what is open in this doc becomes the content of
-  `tasks.jsonl`. The landed steps live in git, and a step that dropped power is in
-  `docs/what-was-removed.md`. A stage's rows are written when it starts.
 - **G1.** Restore the two size ratchets in `scripts/check_guardrails.sh` and re-baseline
   both with `--update`. They are paused, with the reason at the call site.
 - **G2.** The one live `kcode run` probe against its own socket, in a scratch repo, run by
@@ -498,24 +384,6 @@ client context) waits on it. (A1 measured 19 `SwarmState { .. }` literals and 24
   it: the first fan-out run's root ran `find /` and read a sibling repo's list before it
   found its own (2026-10-04).
 
-### The bound (decided 2026-10-04)
-
-One limit, the configurable one: `agents.swarm_max_concurrent_agents`, 32 by default and 0
-to switch it off, counting the live members that consume swarm capacity, read in the one
-place a member is created, the spawn admission (`comm_session.rs`). The hard constant
-`MAX_SWARM_MEMBERS = 1000` goes with it. The comment on the surviving check records that
-nested agents could grow to the hard cap and exhaust RAM, so the constant is not what saves
-a machine; it is a second check, a second message, a second counter and two tests for a
-number that never fires, and the config key is already the escape when a run legitimately
-owns more rows than the default.
-
-Two things the limit deliberately does not do. It does not end idle holder members, which
-is the member lifetime in the model above, and it is not read at a wake: a wake creates no
-member, so a check there would guard nothing. The other two clauses this section used to
-carry are already satisfied by S1: `run_plan` and its recovery dance went with the driver
-in S1b, and the credential-wave breaker was one of its policies, so
-`docs/what-was-removed.md` already names both.
-
 ### What to verify when the list is done
 
 Each stage's own gate is in its section. These are the properties that outlive a stage.
@@ -530,9 +398,8 @@ Each stage's own gate is in its section. These are the properties that outlive a
 
 ### Unread at the time of writing
 
-`comm_session`'s spawn body (~150 of 1,264 lines read), `comm_sync`'s five handlers,
-`comm_graph`'s seed and expand write paths (the complete path was read), the `Comm*` arms
-in `client_lifecycle`, the channel handlers, the member-shape definitions and the
-gallery's data adapter, `client_comm_message`, `todo.rs:330-470`, and the TUI's render
-internals. The stages rest on the schedulers, waiters, dispatchers, artifact producers
-and liveness predicates, all of which were read in full.
+Still un-read, and the open stages rest on them: the TUI's render internals and the
+gallery's data adapter (S2, S3), the four member-shape definitions (S3),
+`todo.rs:330-470` (S5), and the `Comm*` arms in `client_lifecycle` (D2). The
+schedulers, waiters, dispatchers, artifact producers and liveness predicates were read in
+full before the loop's stage landed.
